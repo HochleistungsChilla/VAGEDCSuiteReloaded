@@ -192,6 +192,100 @@ namespace VAGSuite
 
         #endregion
 
+        #region Getriebeart
+
+        private static readonly byte[] AutomaticMarker = new byte[]
+        {
+            0x45, 0x44, 0x43, 0x20, 0x20, 0x41, 0x47   // "EDC  AG"
+        };
+
+        private static readonly byte[] ManualMarker = new byte[]
+        {
+            0x45, 0x44, 0x43, 0x20, 0x20, 0x53, 0x47   // "EDC  SG"
+        };
+
+        /// <summary>
+        /// Gearbox family named by the code block identifier of one data block:
+        /// "Automatic" for "EDC  AG", "Manual" for "EDC  SG", empty when the
+        /// block carries neither.  The value is read from the image, because the
+        /// block order is not the same in every file.  A four-wheel drive cannot
+        /// be told apart from a manual gearbox - both use "EDC  SG".
+        /// </summary>
+        public static string DescribeGearbox(byte[] image, int block)
+        {
+            if (image == null || !IsValidBlockNumber(block)) return string.Empty;
+            int start = BlockBases[block - 1];
+            if (start < 0 || start + BlockSize > image.Length) return string.Empty;
+
+            int automatic = IndexOf(image, start, start + BlockSize, AutomaticMarker);
+            int manual = IndexOf(image, start, start + BlockSize, ManualMarker);
+            if (automatic >= 0 && (manual < 0 || automatic < manual)) return "Automatic";
+            if (manual >= 0) return "Manual";
+            return string.Empty;
+        }
+
+        /// <summary>
+        /// Gearbox code of the code block identifier, for example "EAAJT20X"
+        /// or "E88JT200".  The identifier reads
+        /// "... EDC  SG  3102 0281010170 EAAJT20X ...", so the eight characters
+        /// after the ten digit Bosch number are taken.  Some files glue the
+        /// code to the part number ("E88JT200HEX038906018P"), which is why only
+        /// the first eight characters of that token are used.  Empty when the
+        /// block carries no such identifier.
+        /// </summary>
+        public static string DescribeGearboxCode(byte[] image, int block)
+        {
+            if (image == null || !IsValidBlockNumber(block)) return string.Empty;
+            int start = BlockBases[block - 1];
+            if (start < 0 || start + BlockSize > image.Length) return string.Empty;
+
+            int marker = IndexOf(image, start, start + BlockSize, AutomaticMarker);
+            int manual = IndexOf(image, start, start + BlockSize, ManualMarker);
+            if (marker < 0 || (manual >= 0 && manual < marker)) marker = manual;
+            if (marker < 0) return string.Empty;
+
+            int end = Math.Min(marker + 160, image.Length);
+            int i = marker;
+            while (i < end - 10)
+            {
+                int digits = i;
+                while (digits < end && image[digits] >= (byte)'0' && image[digits] <= (byte)'9') digits++;
+                if (digits - i == 10 && digits < end && image[digits] == (byte)' ')
+                {
+                    int token = digits;
+                    while (token < end && image[token] == (byte)' ') token++;
+                    if (token + 8 <= image.Length)
+                    {
+                        System.Text.StringBuilder sb = new System.Text.StringBuilder(8);
+                        for (int n = 0; n < 8; n++)
+                        {
+                            char c = (char)image[token + n];
+                            if (!char.IsLetterOrDigit(c)) return string.Empty;
+                            sb.Append(c);
+                        }
+                        return sb.ToString();
+                    }
+                }
+                if (digits == i) i++;
+                else i = digits;
+            }
+            return string.Empty;
+        }
+
+        private static int IndexOf(byte[] image, int start, int end, byte[] pattern)
+        {
+            int last = end - pattern.Length;
+            for (int i = start; i <= last; i++)
+            {
+                int j = 0;
+                while (j < pattern.Length && image[i + j] == pattern[j]) j++;
+                if (j == pattern.Length) return i;
+            }
+            return -1;
+        }
+
+        #endregion
+
         #region Auswahlmaske
 
         /// <summary>

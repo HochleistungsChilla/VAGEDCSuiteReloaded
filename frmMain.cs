@@ -248,6 +248,7 @@ namespace VAGSuite
                     barFilenameText.Caption = Path.GetFileName(fileName);
 
                     Tools.Instance.m_symbols = DetectMaps(Tools.Instance.m_currentfile, out Tools.Instance.codeBlockList, out Tools.Instance.AxisList, showMessage, true);
+                    RefreshTargetBlockCaptions();
 
                     gridControl1.DataSource = null;
                     Application.DoEvents();
@@ -1076,6 +1077,69 @@ namespace VAGSuite
             {
                 m_appSettings.TargetBlockMask = mask;
             }
+        }
+
+        /// <summary>
+        /// Appends the gearbox family of each block to its caption, for example
+        /// "Block 1 (automatic)".  Read from the loaded image; without a 256 KB
+        /// EDC15V-5 file the captions stay plain.
+        /// </summary>
+        private void RefreshTargetBlockCaptions()
+        {
+            string[] roles = new string[3];
+            string[] codes = new string[3];
+            try
+            {
+                string file = Tools.Instance.m_currentfile;
+                if (!string.IsNullOrEmpty(file) && File.Exists(file) &&
+                    Tools.Instance.m_currentfilelength == Edc15V256Layout.ImageSize &&
+                    Tools.Instance.IsEdc15V256KImage(file))
+                {
+                    byte[] image = File.ReadAllBytes(file);
+                    for (int b = 1; b <= 3; b++)
+                    {
+                        roles[b - 1] = Edc15V256Layout.DescribeGearbox(image, b);
+                        codes[b - 1] = Edc15V256Layout.DescribeGearboxCode(image, b);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // The captions must never break the load of a file.
+            }
+            SetTargetBlockCaption(cbTargetBlock1, 1, roles[0], codes[0]);
+            SetTargetBlockCaption(cbTargetBlock2, 2, roles[1], codes[1]);
+            SetTargetBlockCaption(cbTargetBlock3, 3, roles[2], codes[2]);
+        }
+
+        private static void SetTargetBlockCaption(DevExpress.XtraBars.BarCheckItem item, int block,
+                                                  string role, string code)
+        {
+            if (item == null) return;
+
+            // The identifier separates automatic ("EDC  AG") from manual
+            // ("EDC  SG") only.  Blocks 2 and 3 are both manual, so the usual
+            // assignment names them: block 1 automatic, block 2 manual front
+            // wheel drive, block 3 4x4.  The hint keeps marker and code.
+            string shown = role;
+            if (role == "Manual" && block == 2) shown = "Manual, FWD";
+            if (role == "Manual" && block == 3) shown = "4x4";
+
+            string detail = shown;
+            if (!string.IsNullOrEmpty(code))
+            {
+                detail = string.IsNullOrEmpty(detail) ? code : detail + ", " + code;
+            }
+            item.Caption = Edc15V256Layout.BlockNames[block - 1] +
+                           (string.IsNullOrEmpty(detail) ? string.Empty : " (" + detail + ")");
+
+            string hint = "Write map changes into " + Edc15V256Layout.BlockNames[block - 1] +
+                          " (" + Edc15V256Layout.BlockRanges[block - 1] + ") at the same relative offset";
+            if (!string.IsNullOrEmpty(role)) hint += "; identifier " + role;
+            if (!string.IsNullOrEmpty(code)) hint += ", code " + code;
+            if (role == "Manual" && block == 2) hint += " (front wheel drive)";
+            if (role == "Manual" && block == 3) hint += " (four wheel drive)";
+            item.Hint = hint;
         }
 
         /// <summary>Brings the check items in line with the persisted mask.</summary>
@@ -2414,6 +2478,7 @@ namespace VAGSuite
             InitSkins();
             LoadLayoutFiles();
             SyncTargetBlockItems();
+            RefreshTargetBlockCaptions();
             
             if (m_appSettings.DebugMode)
             {
