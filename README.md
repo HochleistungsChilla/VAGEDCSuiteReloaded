@@ -81,6 +81,23 @@ wine build/TargetBlockTest.exe <directory-with-reference-bins>
 Result on the current reference set: **60/60**, including 24/24 fields on the eight clean P
 references, 0/3 on `agroff_raw` as expected (and 3/3 after `Fix`), and 3/3 on the GA variant.
 
+## Versioning
+
+The fork uses `MAJOR.MINOR.PATCH` (Semantic Versioning). The number lives in
+`Properties/AssemblyInfo.cs` (`AssemblyVersion`, `AssemblyFileVersion`,
+`AssemblyInformationalVersion`) and is what the splash screen and the About box
+show. Releases are annotated git tags `vX.Y.Z` on the release commit; the
+history is listed in `CHANGELOG.md`.
+
+```bash
+tools/bump-version.py 2.1.0     # set the version, prepare the changelog heading
+tools/bump-version.py --check   # compare AssemblyInfo with the tag on HEAD
+tools/bump-version.py --show    # version plus `git describe`
+```
+
+`--check` exits non-zero when a tagged commit and the assembly version disagree,
+so it can gate a release script.
+
 ## Map label data
 
 `MapLabelFile` reads and writes the `.labels` text format. The 038 906 018 P label set
