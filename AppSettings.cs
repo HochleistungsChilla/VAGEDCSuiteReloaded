@@ -102,6 +102,26 @@ namespace VAGSuite
             }
         }
 
+        private int _targetBlockMask = 0;
+
+        /// <summary>
+        /// Target blocks for map changes on 256 KB EDC15V-5 files.
+        /// Bit 0 = block 1 (0x38000), bit 1 = block 2 (0x00000),
+        /// bit 2 = block 3 (0x08000).  0 = no selection, i.e. only the
+        /// block from which the map was loaded is written.
+        /// </summary>
+        public int TargetBlockMask
+        {
+            get { return _targetBlockMask & Edc15V256Layout.MaskAll; }
+            set { _targetBlockMask = value & Edc15V256Layout.MaskAll; SaveRegistrySetting("TargetBlockMask", _targetBlockMask); }
+        }
+
+        /// <summary>True if at least one target block is preselected.</summary>
+        public bool TargetBlocksActive
+        {
+            get { return TargetBlockMask != 0; }
+        }
+
         
 
         private string m_skinname = string.Empty;
@@ -401,6 +421,7 @@ namespace VAGSuite
 
 
                 saveSettings.SetValue("CodeBlockSyncActive", _codeBlockSyncActive);
+                saveSettings.SetValue("TargetBlockMask", _targetBlockMask);
                 saveSettings.SetValue("RequestProjectNotes", m_RequestProjectNotes);
                 saveSettings.SetValue("ShowTablesUpsideDown", m_ShowTablesUpsideDown);
 
@@ -555,6 +576,10 @@ namespace VAGSuite
                             else if (a == "CodeBlockSyncActive" || a == "codeBlockSyncActive")
                             {
                                 _codeBlockSyncActive = Convert.ToBoolean(Settings.GetValue(a).ToString());
+                            }
+                            else if (a == "TargetBlockMask")
+                            {
+                                _targetBlockMask = Convert.ToInt32(Settings.GetValue(a).ToString()) & Edc15V256Layout.MaskAll;
                             }
 
                             else if (a == "LastOpenedType")

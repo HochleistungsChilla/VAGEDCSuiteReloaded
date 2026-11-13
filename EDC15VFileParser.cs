@@ -166,6 +166,7 @@ namespace VAGSuite
             newSymbols.SortingOrder = GenericComparer.SortOrder.Ascending;
             newSymbols.Sort();
             NameKnownMaps(allBytes, newSymbols, newCodeBlocks);
+            ApplyMapLabels(allBytes, newSymbols, newCodeBlocks, partnumber);
             BuildAxisIDList(newSymbols, newAxisHelpers);
             MatchAxis(newSymbols, newAxisHelpers);
 
@@ -383,6 +384,40 @@ namespace VAGSuite
             return SVBLFound;
         }
         
+        /// <summary>
+        /// Overlay labels from an embedded label file (Labels\*.labels).
+        /// Runs after NameKnownMaps and fills generic symbols only; rows whose
+        /// source ends in "-FIX" may override an existing (wrong) heuristic name.
+        /// Without a matching file nothing changes.
+        /// </summary>
+        private void ApplyMapLabels(byte[] allBytes, SymbolCollection newSymbols,
+                                    List<CodeBlock> newCodeBlocks, string partnumber)
+        {
+            try
+            {
+                // Bind to the 12-character part number (038906018P), not to
+                // ExtractSoftwareNumber(), which returns the SG stand (SG1623).
+                List<MapLabel> labels = MapLabelStore.Load(partnumber, allBytes.Length);
+                if (labels == null || labels.Count == 0) return;
+                MapLabelApplyResult r = MapLabelStore.Apply(allBytes, newSymbols, newCodeBlocks, labels,
+                    delegate(long address) { return DetermineNumberByFlashBank(address, newCodeBlocks); },
+                    delegate(long address) { return DetermineCodeBlockByByAddress(address, newCodeBlocks); });
+                Console.WriteLine("[labels] applied " + r.Maps3D.ToString() + " 3D, " +
+                                  r.Curves1D.ToString() + " 1D, " +
+                                  r.ScalarsRenamed.ToString() + " scalar renames, " +
+                                  r.ScalarsAdded.ToString() + " scalars added (" +
+                                  r.AlreadyNamed.ToString() + " already named, " +
+                                  r.Skipped.ToString() + " skipped, " +
+                                  r.Rejected.ToString() + " rejected, " +
+                                  labels.Count.ToString() + " label rows)");
+            }
+            catch (Exception ex)
+            {
+                // Label application must never break map detection.
+                Console.WriteLine("[labels] not applied: " + ex.Message);
+            }
+        }
+
         public override void NameKnownMaps(byte[] allBytes, SymbolCollection newSymbols, List<CodeBlock> newCodeBlocks)
         {
             SymbolAxesTranslator st = new SymbolAxesTranslator();
@@ -2192,7 +2227,7 @@ namespace VAGSuite
             if (idstrip == 0xC0 || idstrip == 0xC1 || idstrip == 0xC2 || idstrip == 0xC4 || idstrip == 0xC5) return true;
             if (idstrip == 0xE0 || idstrip == 0xE4 || idstrip == 0xE5 || idstrip == 0xE7 || idstrip == 0xE9 || idstrip == 0xEA || idstrip == 0xEB || idstrip == 0xEC || idstrip == 0xEF) return true;
             if (idstrip == 0xDA || idstrip == 0xDC || idstrip == 0xDD || idstrip == 0xDE) return true;
-            if (idstrip == 0xF9 || idstrip == 0xFE) return true;
+            if (idstrip == 0xF9 || idstrip == 0xFE || idstrip == 0xFC) return true;
             if (idstrip == 0xD7 || idstrip == 0xE6) return true;
             if (idstrip == 0xD5) return true;
             if (idstrip == 0xD9 || idstrip == 0xE8) return true;

@@ -22,7 +22,9 @@ namespace VAGSuite
         VAG_EDC15VM_V41,
         VAG_EDC15VM_V41V2,
         VAG_EDC15VM_V41_2002,
-        Unknown
+        Unknown = 6,
+        // 256 KB EDC15V-5, explicit value so Unknown keeps its old number
+        VAG_EDC15VM_256K = 7
     }
 
     public class ChecksumResultDetails

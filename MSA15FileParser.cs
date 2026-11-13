@@ -123,6 +123,7 @@ namespace VAGSuite
             byte[] allBytes = File.ReadAllBytes(filename);
             string boschnumber = ExtractBoschPartnumber(allBytes);
             string softwareNumber = ExtractSoftwareNumber(allBytes);
+            string partnumber = ExtractPartnumber(allBytes);
             partNumberConverter pnc = new partNumberConverter();
 
             VerifyCodeBlocks(allBytes, newSymbols, newCodeBlocks);
@@ -136,6 +137,7 @@ namespace VAGSuite
             newSymbols.SortingOrder = GenericComparer.SortOrder.Ascending;
             newSymbols.Sort();
             NameKnownMaps(allBytes, newSymbols, newCodeBlocks);
+            ApplyMapLabels(allBytes, newSymbols, newCodeBlocks, partnumber);
             BuildAxisIDList(newSymbols, newAxisHelpers);
             MatchAxis(newSymbols, newAxisHelpers);
 
@@ -310,6 +312,40 @@ namespace VAGSuite
                 else found = false;
             }
             return svblfound;
+        }
+
+        /// <summary>
+        /// Overlay labels from an embedded label file (Labels\*.labels).
+        /// Runs after NameKnownMaps and fills generic symbols only; rows whose
+        /// source ends in "-FIX" may override an existing (wrong) heuristic name.
+        /// Without a matching file nothing changes.
+        /// </summary>
+        private void ApplyMapLabels(byte[] allBytes, SymbolCollection newSymbols,
+                                    List<CodeBlock> newCodeBlocks, string partnumber)
+        {
+            try
+            {
+                // Bind to the 12-character part number (038906018P), not to
+                // ExtractSoftwareNumber(), which returns the SG stand (SG1623).
+                List<MapLabel> labels = MapLabelStore.Load(partnumber, allBytes.Length);
+                if (labels == null || labels.Count == 0) return;
+                MapLabelApplyResult r = MapLabelStore.Apply(allBytes, newSymbols, newCodeBlocks, labels,
+                    delegate(long address) { return DetermineNumberByFlashBank(address, newCodeBlocks); },
+                    delegate(long address) { return DetermineCodeBlockByByAddress(address, newCodeBlocks); });
+                Console.WriteLine("[labels] applied " + r.Maps3D.ToString() + " 3D, " +
+                                  r.Curves1D.ToString() + " 1D, " +
+                                  r.ScalarsRenamed.ToString() + " scalar renames, " +
+                                  r.ScalarsAdded.ToString() + " scalars added (" +
+                                  r.AlreadyNamed.ToString() + " already named, " +
+                                  r.Skipped.ToString() + " skipped, " +
+                                  r.Rejected.ToString() + " rejected, " +
+                                  labels.Count.ToString() + " label rows)");
+            }
+            catch (Exception ex)
+            {
+                // Label application must never break map detection.
+                Console.WriteLine("[labels] not applied: " + ex.Message);
+            }
         }
 
         public override void NameKnownMaps(byte[] allBytes, SymbolCollection newSymbols, List<CodeBlock> newCodeBlocks)

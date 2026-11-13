@@ -9,6 +9,12 @@ namespace VAGSuite
 		internal bool Is1D = false;
 		internal bool Is2D = false;
 		internal bool Is3D = false;
+        internal bool IsScalar = false;
+
+        // Storage width of one value in bytes (1 = 8 bit, 2 = 16 bit).
+        // Only label files set this to 1; every heuristic produces 16-bit
+        // symbols, so the default keeps the existing behaviour unchanged.
+        internal int ValueBytes = 2;
 
         private string m_xaxisUnits = string.Empty;
 

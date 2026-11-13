@@ -117,6 +117,7 @@ namespace VAGSuite
         private msiupdater m_msiUpdater;
         public DelegateStartReleaseNotePanel m_DelegateStartReleaseNotePanel;
         private frmSplash splash;
+        private DevExpress.XtraBars.BarButtonItem btnTargetBlocks;
         public frmMain()
         {
             try
@@ -131,6 +132,7 @@ namespace VAGSuite
             }
                 
             InitializeComponent();
+            InitTargetBlockUi();
             try
             {
                 m_DelegateStartReleaseNotePanel = new DelegateStartReleaseNotePanel(this.StartReleaseNotesViewer);
@@ -196,6 +198,22 @@ namespace VAGSuite
         }
 
 
+        /// <summary>
+        /// Opens a file passed at startup the same way as the
+        /// "Open file" button (Program.cs, command line argument).
+        /// </summary>
+        internal string StartupFile = string.Empty;
+
+        internal void OpenFileFromCommandLine(string fileName)
+        {
+            // If the file was already opened at startup (AutoLoadLastFile),
+            // do not parse it a second time.
+            if (string.Equals(Tools.Instance.m_currentfile, fileName,
+                              StringComparison.OrdinalIgnoreCase))
+                return;
+            OpenFile(fileName, true);
+        }
+
         private void OpenFile(string fileName, bool showMessage)
         {
             // don't allow multiple instances
@@ -245,8 +263,20 @@ namespace VAGSuite
                     TryToLoadAdditionalSymbols(fileName, ImportFileType.XML, Tools.Instance.m_symbols, true);
 
                 }
-                catch (Exception)
+                catch (Exception openEx)
                 {
+                    // Previously swallowed silently: a file that fails during
+                    // analysis looked like "nothing opened".
+                    Console.WriteLine("OpenFile failed: " + openEx.ToString());
+                    string sizeText = string.Empty;
+                    try { sizeText = new FileInfo(fileName).Length.ToString() + " Bytes"; }
+                    catch (Exception) { }
+                    new frmInfoBox(
+                        "Die Datei konnte nicht analysiert werden.\r\n\r\n" +
+                        "Datei  : " + Path.GetFileName(fileName) + "\r\n" +
+                        "Groesse: " + sizeText + "\r\n\r\n" +
+                        "Fehler : " + openEx.Message + "\r\n\r\n" +
+                        "Die Datei bleibt unveraendert; es wurde nichts gespeichert.");
                 }
                 btnOpenFile.Enabled = true;
                 btnOpenProject.Enabled = true;
@@ -277,9 +307,19 @@ namespace VAGSuite
                 //1) Vw Hardware Number: 38906019GF, Vw System Type: 1,9l R4 EDC15P, Vw Software Number: SG  1434;
                 //2) Vw Hardware Number: 38906019LJ, Vw System Type: 1,9l R4 EDC15P, Vw Software Number: SG  5934.
 
-                if (!info.EcuType.StartsWith("EDC15P") && !info.EcuType.StartsWith("EDC15VM") && info.EcuType != string.Empty && showMessage)
+                // Accept all EDC15 and MSA families. EDC15V-5 (e.g. 038906018P)
+                // is run internally through the MSA15 parser and was previously missed.
+                bool knownFamily = info.EcuType.StartsWith("EDC15") ||
+                                   info.EcuType.StartsWith("MSA15") ||
+                                   info.EcuType.StartsWith("MSA12") ||
+                                   info.EcuType.StartsWith("MSA11") ||
+                                   info.EcuType.StartsWith("MSA6");
+                if (!knownFamily && showMessage)
                 {
-                    frmInfoBox infobx = new frmInfoBox("No EDC15P/VM file [" + info.EcuType + "] " + Path.GetFileName(filename));
+                    // Do not report only "no EDC15", but show what was actually
+                    // found in the file (size, numbers, parser).
+                    new frmInfoBox(Tools.Instance.DescribeUnknownFile(
+                        filename, allBytes, parser, info, parser.GetType().Name));
                 }
                 if (info.EcuType == string.Empty)
                 {
@@ -331,6 +371,23 @@ namespace VAGSuite
                         frmInfoBox infobx = new frmInfoBox(_message);
                     }
                 }
+                if (showMessage && newSymbols.Count == 0)
+                {
+                    // Parser ran but found nothing: say what was recognised
+                    // instead of showing an empty list without explanation.
+                    string vagNo = string.Empty;
+                    try { vagNo = Tools.Instance.StripNonAscii(parser.ExtractPartnumber(allBytes)); }
+                    catch (Exception) { }
+                    new frmInfoBox(
+                        "Es wurden keine Kennfelder gefunden.\r\n\r\n" +
+                        "Datei     : " + Path.GetFileName(filename) + "\r\n" +
+                        "Groesse   : " + allBytes.Length.ToString() + " Bytes (0x" + allBytes.Length.ToString("X") + ")\r\n" +
+                        "Bosch-Nr. : " + (info.PartNumber.Length > 0 ? info.PartNumber : "(nicht gefunden)") + "\r\n" +
+                        "VAG-Nr.   : " + (vagNo.Length > 0 ? vagNo : "(nicht gefunden)") + "\r\n" +
+                        "Erkannt   : " + (info.EcuType.Length > 0 ? info.EcuType : "(unbekannt)") + "\r\n\r\n" +
+                        "Moegliche Ursachen: falsche Dateigroesse (256 KB / 512 KB / 1 MB),\r\n" +
+                        "unvollstaendiger oder fremder Datenstand.");
+                }
                 if (isPrimaryFile)
                 {
                     barSymCount.Caption = newSymbols.Count.ToString() + " symbols";
@@ -363,6 +420,16 @@ namespace VAGSuite
 
                     }
                 }
+            }
+            else if (showMessage)
+            {
+                byte[] allBytes = File.ReadAllBytes(filename);
+                new frmInfoBox(
+                    "Fuer diese Datei gibt es keinen Parser.\r\n\r\n" +
+                    "Datei   : " + Path.GetFileName(filename) + "\r\n" +
+                    "Groesse : " + allBytes.Length.ToString() + " Bytes (0x" + allBytes.Length.ToString("X") + ")\r\n\r\n" +
+                    "Unterstuetzt werden: EDC15P, EDC15P-6, EDC15V/EDC15V-5, EDC15C,\r\n" +
+                    "EDC15M, MSA15, MSA12, MSA11, MSA6, EDC16 und EDC17.");
             }
             return newSymbols;
 
@@ -527,7 +594,7 @@ namespace VAGSuite
                                     tabdet.Correction_factor = sh.Correction;// GetMapCorrectionFactor(tabdet.Map_name);
                                     tabdet.Correction_offset = sh.Offset;// GetMapCorrectionOffset(tabdet.Map_name);
                                     tabdet.IsUpsideDown = m_appSettings.ShowTablesUpsideDown;
-                                    tabdet.ShowTable(columns, true);
+                                    tabdet.ShowTable(columns, sh.ValueBytes != 1);
                                     tabdet.Dock = DockStyle.Fill;
                                     tabdet.onSymbolSave += new VAGSuite.MapViewerEx.NotifySaveSymbol(tabdet_onSymbolSave);
                                     tabdet.onSymbolRead += new VAGSuite.MapViewerEx.NotifyReadSymbol(tabdet_onSymbolRead);
@@ -708,7 +775,7 @@ namespace VAGSuite
                 GetTableMatrixWitdhByName(e.Filename, Tools.Instance.m_symbols, e.SymbolName, out cols, out rows);
                 mv.IsRAMViewer = false;
                 mv.OnlineMode = false;
-                mv.ShowTable(cols, true);
+                mv.ShowTable(cols, IsSixteenBitSymbol(e.SymbolName));
                 mv.IsRAMViewer = false;
                 mv.OnlineMode = false;
                 System.Windows.Forms.Application.DoEvents();
@@ -737,6 +804,10 @@ namespace VAGSuite
 
         private void SaveDataIncludingSyncOption(string fileName, string varName, int address, int length, byte[] data, bool useNote, string note)
         {
+            if (TrySaveToSelectedTargetBlocks(fileName, address, length, data, useNote, note))
+            {
+                return;
+            }
             Tools.Instance.savedatatobinary(address, length, data, fileName, useNote, note, Tools.Instance.m_currentFileType);
             if (m_appSettings.CodeBlockSyncActive)
             {
@@ -818,6 +889,10 @@ namespace VAGSuite
 
         private void SaveAxisDataIncludingSyncOption(int address, int length, byte[] data, string fileName, bool useNote, string note)
         {
+            if (TrySaveToSelectedTargetBlocks(fileName, address, length, data, useNote, note))
+            {
+                return;
+            }
             Tools.Instance.savedatatobinary(address, length, data, fileName, useNote, note, Tools.Instance.m_currentFileType);
             if (m_appSettings.CodeBlockSyncActive)
             {
@@ -856,6 +931,200 @@ namespace VAGSuite
 
 
         
+
+        #region Zielblock-Auswahl (256-KB-EDC15V-5)
+
+        /// <summary>
+        /// Creates the menu item "Zielblock" in the group "General".  The
+        /// entry is created at runtime so that the large designer file
+        /// stays unchanged.
+        /// </summary>
+        private void InitTargetBlockUi()
+        {
+            try
+            {
+                btnTargetBlocks = new DevExpress.XtraBars.BarButtonItem();
+                btnTargetBlocks.Caption = "Zielblock";
+                btnTargetBlocks.Hint = "Zielbloecke fuer Map-Aenderungen waehlen (Block 1/2/3/alle)";
+                btnTargetBlocks.Id = 200;
+                btnTargetBlocks.ItemClick += new DevExpress.XtraBars.ItemClickEventHandler(btnTargetBlocks_ItemClick);
+                ribbonControl1.Items.Add(btnTargetBlocks);
+                ribpgGeneralActions.ItemLinks.Add(btnTargetBlocks);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("InitTargetBlockUi failed: " + ex.Message);
+            }
+        }
+
+        private void btnTargetBlocks_ItemClick(object sender, DevExpress.XtraBars.ItemClickEventArgs e)
+        {
+            int mask = (m_appSettings != null) ? m_appSettings.TargetBlockMask : 0;
+            using (frmTargetBlocks dlg = new frmTargetBlocks(mask))
+            {
+                if (dlg.ShowDialog(this) == DialogResult.OK)
+                {
+                    if (m_appSettings != null)
+                    {
+                        m_appSettings.TargetBlockMask = dlg.SelectedMask;
+                    }
+                    UpdateTargetBlockCaption(dlg.SelectedMask);
+                }
+            }
+        }
+
+        private void UpdateTargetBlockCaption()
+        {
+            UpdateTargetBlockCaption(m_appSettings != null ? m_appSettings.TargetBlockMask : 0);
+        }
+
+        private void UpdateTargetBlockCaption(int mask)
+        {
+            if (btnTargetBlocks == null) return;
+            int[] blocks = Edc15V256Layout.BlocksFromMask(mask);
+            if (blocks.Length == 0)
+            {
+                btnTargetBlocks.Caption = "Zielblock: Quelle";
+            }
+            else
+            {
+                string text = string.Empty;
+                foreach (int b in blocks)
+                {
+                    if (text.Length > 0) text += "+";
+                    text += b.ToString();
+                }
+                btnTargetBlocks.Caption = "Zielblock: " + text;
+            }
+        }
+
+        /// <summary>
+        /// True if a symbol of the same length lies in <paramref name="block"/>
+        /// at the same relative position.  Only then is copying
+        /// a map into this block plausible.
+        /// </summary>
+        private static bool HasSymbolAtRelativeOffset(int block, int relativeOffset, int length)
+        {
+            if (!Edc15V256Layout.IsValidBlockNumber(block)) return false;
+            int windowBase = Edc15V256Layout.BlockBases[block - 1];
+            foreach (SymbolHelper sh in Tools.Instance.m_symbols)
+            {
+                if (sh.Length != length) continue;
+                if ((sh.Flash_start_address & Edc15V256Layout.LocalMask) != relativeOffset) continue;
+                if (sh.Flash_start_address >= windowBase &&
+                    sh.Flash_start_address < windowBase + Edc15V256Layout.BlockSize)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private int m_targetBlockNoticeFile = -1;
+
+        /// <summary>
+        /// Writes a map change into the preselected target blocks.
+        /// Returns false if the target block logic does not apply (no selection,
+        /// no 256 KB EDC15V-5 image) - then the previous path runs.
+        /// Returns true if the operation was handled (also on abort).
+        /// </summary>
+        private bool TrySaveToSelectedTargetBlocks(string fileName, int address, int length, byte[] data,
+                                                  bool useNote, string note)
+        {
+            if (m_appSettings == null) return false;
+            int mask = m_appSettings.TargetBlockMask;
+            if (mask == 0) return false;
+            if (!Tools.Instance.IsEdc15V256KImage(fileName))
+            {
+                // Selection set, but the image is not a 256 KB EDC15V-5:
+                // explain once per file why nothing is copied.
+                int fileKey = fileName.GetHashCode();
+                if (m_targetBlockNoticeFile != fileKey)
+                {
+                    m_targetBlockNoticeFile = fileKey;
+                    try
+                    {
+                        long len = new FileInfo(fileName).Length;
+                        if (len == Edc15V256Layout.ImageSize)
+                        {
+                            new frmInfoBox(
+                                "Die Zielblock-Auswahl (" + Edc15V256Layout.DescribeMask(mask) + ") " +
+                                "greift fuer diese Datei nicht.\r\n\r\n" +
+                                "Sie ist 256 KB gross, traegt aber nicht das Markerpaar der " +
+                                "EDC15V-5-Familie an allen drei Blockenden. Es wird wie bisher " +
+                                "nur der Block beschrieben, aus dem die Map geladen wurde.");
+                        }
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+                return false;
+            }
+
+            TargetBlockWriteResult plan = TargetBlockWriter.Plan(fileName, address, length, mask,
+                new BlockSymbolProbe(HasSymbolAtRelativeOffset));
+
+            if (plan.Refused)
+            {
+                new frmInfoBox("Schreibvorgang abgelehnt.\r\n\r\n" + plan.Refusal);
+                return true;
+            }
+
+            if (plan.BlocksWithoutSymbol.Length > 0)
+            {
+                string text = string.Empty;
+                foreach (int b in plan.BlocksWithoutSymbol)
+                {
+                    if (text.Length > 0) text += ", ";
+                    text += Edc15V256Layout.BlockNames[b - 1];
+                }
+                DialogResult answer = MessageBox.Show(
+                    "In " + text + " liegt an Offset 0x" +
+                    Edc15V256Layout.RelativeOffset(address).ToString("X4") +
+                    " kein Kennfeld mit " + length + " Byte.\r\n\r\n" +
+                    "Trotzdem dorthin schreiben?",
+                    "Zielblock ohne passendes Kennfeld",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+                if (answer != DialogResult.Yes)
+                {
+                    return true;
+                }
+            }
+
+            RawBlockWriter writer = new RawBlockWriter(delegate(int targetAddress, int targetLength, byte[] blockData)
+            {
+                Tools.Instance.savedatatobinary(targetAddress, targetLength, blockData, fileName, useNote, note,
+                                                Tools.Instance.m_currentFileType);
+            });
+
+            TargetBlockWriteResult result = TargetBlockWriter.Execute(plan, fileName, address, length, data, writer);
+
+            UpdateRollbackForwardControls();
+            UpdateTargetBlockCaption();
+
+            if (result.Ok)
+            {
+                barChecksum.Caption = "Checksum Ok (" + result.ChecksumsOkAfter + "/" +
+                                      EDC15VM256Checksum.BlockCount + ")";
+            }
+            else
+            {
+                barChecksum.Caption = "Checksum failed";
+            }
+
+            string caption = (result.SealedBlocks != null && result.SealedBlocks.Length == 3)
+                ? "Zielblock: alle drei Bloecke" : "Zielblock-Schreibvorgang";
+            string report = caption + "\r\n\r\n" + result.Message;
+            if (!result.Ok && !string.IsNullOrEmpty(result.Refusal))
+            {
+                report += "\r\n\r\n" + result.Refusal;
+            }
+            new frmInfoBox(report);
+            return true;
+        }
+
+        #endregion
 
         private void VerifyChecksum(string filename, bool showQuestion, bool showInfo)
         {
@@ -932,7 +1201,11 @@ namespace VAGSuite
             else if (result.TypeResult == ChecksumType.VAG_EDC15P_V41_2002) chkType = " V4.1 2002";
             if (!result.CalculationOk)
             {
-                barChecksum.Caption = "Checksum failed" + chkType;
+                // TypeResult Unknown means: for this file type there is (still)
+                // no checksum routine. That is not a fault of the file and
+                // should not look like one in the status bar either.
+                barChecksum.Caption = (result.TypeResult == ChecksumType.Unknown)
+                    ? "Checksum: n/a" : "Checksum failed" + chkType;
             }
             else
             {
@@ -1009,6 +1282,21 @@ namespace VAGSuite
             double returnvalue = 1;
             
             return returnvalue;
+        }
+
+        /// <summary>
+        /// True for the normal 16-bit viewer.  A label file can mark an object
+        /// as 8-bit (ValueBytes == 1); everything the heuristics produce stays
+        /// 16-bit, so this returns true for all symbols the Suite detects itself.
+        /// </summary>
+        private bool IsSixteenBitSymbol(string symbolname)
+        {
+            foreach (SymbolHelper sh in Tools.Instance.m_symbols)
+            {
+                if (sh.Varname == symbolname || sh.Userdescription == symbolname)
+                    return sh.ValueBytes != 1;
+            }
+            return true;
         }
 
 
@@ -1305,7 +1593,7 @@ namespace VAGSuite
                             tabdet.Correction_factor = sh.Correction;
                             tabdet.Correction_offset = sh.Offset;// GetMapCorrectionOffset(tabdet.Map_name);
                             tabdet.IsUpsideDown = m_appSettings.ShowTablesUpsideDown;
-                            tabdet.ShowTable(columns, true);
+                            tabdet.ShowTable(columns, sh.ValueBytes != 1);
                             tabdet.Dock = DockStyle.Fill;
                             tabdet.onSymbolSave += new VAGSuite.MapViewerEx.NotifySaveSymbol(tabdet_onSymbolSave);
                             tabdet.onSymbolRead += new VAGSuite.MapViewerEx.NotifyReadSymbol(tabdet_onSymbolRead);
@@ -1490,8 +1778,16 @@ namespace VAGSuite
                         if (mapdata.Length == mapdata2.Length)
                         {
 
-                            for (int bt = 0; bt < mapdata2.Length; bt += 2)
+                            for (int bt = 0; bt < mapdata2.Length; bt += (sh.ValueBytes == 1) ? 1 : 2)
                             {
+                                if (sh.ValueBytes == 1)
+                                {
+                                    // 8-bit object: one byte per value, one byte per difference.
+                                    int d = Math.Abs(Convert.ToInt32(mapdata.GetValue(bt))
+                                                   - Convert.ToInt32(mapdata2.GetValue(bt)));
+                                    mapdata.SetValue((byte)d, bt);
+                                    continue;
+                                }
                                 int value1 = Convert.ToInt16(mapdata.GetValue(bt)) * 256 + Convert.ToInt16(mapdata.GetValue(bt + 1));
                                 int value2 = Convert.ToInt16(mapdata2.GetValue(bt)) * 256 + Convert.ToInt16(mapdata2.GetValue(bt + 1));
                                 value1 = Math.Abs((int)value1 - (int)value2);
@@ -1507,7 +1803,7 @@ namespace VAGSuite
                             tabdet.Correction_factor = sh.Correction;
                             tabdet.Correction_offset = sh.Offset;
                             tabdet.IsUpsideDown = m_appSettings.ShowTablesUpsideDown;
-                            tabdet.ShowTable(columns, true);
+                            tabdet.ShowTable(columns, sh.ValueBytes != 1);
                             tabdet.Dock = DockStyle.Fill;
                             tabdet.onClose += new MapViewerEx.ViewerClose(tabdet_onClose);
                             dockPanel.Text = "Symbol difference: " + sh.Varname + " [" + Path.GetFileName(Filename) + "]";
@@ -2019,6 +2315,7 @@ namespace VAGSuite
             }
             InitSkins();
             LoadLayoutFiles();
+            UpdateTargetBlockCaption();
             
             if (m_appSettings.DebugMode)
             {
@@ -2058,7 +2355,9 @@ namespace VAGSuite
             }
             try
             {
-                if (m_appSettings.AutoLoadLastFile)
+                // When starting with a file argument, do not open a second file
+                // automatically - otherwise the last file is loaded as well.
+                if (m_appSettings.AutoLoadLastFile && StartupFile.Length == 0)
                 {
                     if (m_appSettings.LastOpenedType == 0)
                     {
@@ -3474,7 +3773,7 @@ namespace VAGSuite
                         int rows = 8;
                         int tablewidth = GetTableMatrixWitdhByName(Tools.Instance.m_currentfile, Tools.Instance.m_symbols, tabdet.Map_name, out columns, out rows);
                         int address = Convert.ToInt32(sh.Flash_start_address);
-                        tabdet.ShowTable(columns, true);
+                        tabdet.ShowTable(columns, sh.ValueBytes != 1);
                         break;
                     }
                 }
@@ -4360,43 +4659,18 @@ namespace VAGSuite
 
         private void btnSplitFiles_ItemClick(object sender, ItemClickEventArgs e)
         {
-
-            if (Tools.Instance.m_currentfile != "")
+            // The split dialog lets the user choose the byte order and the
+            // output directory; it writes <name>_low.bin and <name>_high.bin.
+            string input = Tools.Instance.m_currentfile;
+            if (string.IsNullOrEmpty(input) || !File.Exists(input))
             {
-                if (File.Exists(Tools.Instance.m_currentfile))
-                {
-                    string path = Path.GetDirectoryName(Tools.Instance.m_currentfile);
-                    FileInfo fi = new FileInfo(Tools.Instance.m_currentfile);
-                    FileStream fs = File.Create(path + "\\chip2.bin");
-                    BinaryWriter bw = new BinaryWriter(fs);
-                    FileStream fs2 = File.Create(path + "\\chip1.bin");
-                    BinaryWriter bw2 = new BinaryWriter(fs2);
-                    FileStream fsi1 = File.OpenRead(Tools.Instance.m_currentfile);
-                    BinaryReader br1 = new BinaryReader(fsi1);
-                    bool toggle = false;
-                    for (int tel = 0; tel < fi.Length; tel++)
-                    {
-                        Byte ib1 = br1.ReadByte();
-                        if (!toggle)
-                        {
-                            toggle = true;
-                            bw.Write(ib1);
-                        }
-                        else
-                        {
-                            toggle = false;
-                            bw2.Write(ib1);
-                        }
-                    }
-                    bw.Close();
-                    bw2.Close();
-                    fs.Close();
-                    fs2.Close();
-                    fsi1.Close();
-                    br1.Close();
-                    MessageBox.Show("File split to chip1.bin and chip2.bin");
-                }
+                MessageBox.Show(this,
+                    "Es ist keine Datei geoeffnet, die geteilt werden koennte.",
+                    "Split file", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
             }
+            frmBinSplit split = new frmBinSplit(input);
+            split.ShowDialog(this);
         }
 
         private void btnBuildLibrary_ItemClick(object sender, ItemClickEventArgs e)
@@ -4937,8 +5211,12 @@ namespace VAGSuite
                         data.SetValue(Convert.ToByte(cellvalue.ToString()), cellcount++);
                     }
                 }
-                Tools.Instance.savedatatobinary((int)GetSymbolAddress(Tools.Instance.m_symbols, symbolname), symbollength, data, Tools.Instance.m_currentfile, true, Tools.Instance.m_currentFileType);
-                Tools.Instance.UpdateChecksum(Tools.Instance.m_currentfile, false);
+                int symbolAddress = (int)GetSymbolAddress(Tools.Instance.m_symbols, symbolname);
+                if (!TrySaveToSelectedTargetBlocks(Tools.Instance.m_currentfile, symbolAddress, symbollength, data, true, "Excel import"))
+                {
+                    Tools.Instance.savedatatobinary(symbolAddress, symbollength, data, Tools.Instance.m_currentfile, true, Tools.Instance.m_currentFileType);
+                    Tools.Instance.UpdateChecksum(Tools.Instance.m_currentfile, false);
+                }
             }
 
 

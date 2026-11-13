@@ -236,6 +236,60 @@ namespace VAGSuite
             return retval;
         }
 
+        /// <summary>
+        /// Describes a file that could not be assigned to any supported ECU:
+        /// size, detected numbers, detected type and parser.
+        /// Replaces the former message "No EDC15P/VM file [...]", which for a
+        /// 256 KB EDC15V-5 (038906018P, SG1623) said only "kein EDC15".
+        /// </summary>
+        internal string DescribeUnknownFile(string filename, byte[] allBytes,
+                                           IEDCFileParser parser, ECUInfo info, string parserName)
+        {
+            string vagNumber = string.Empty;
+            string software = string.Empty;
+            try
+            {
+                vagNumber = Tools.Instance.StripNonAscii(parser.ExtractPartnumber(allBytes));
+                software = Tools.Instance.StripNonAscii(parser.ExtractSoftwareNumber(allBytes));
+            }
+            catch (Exception)
+            {
+                // The display must never fail because of a parser quirk.
+            }
+            StringBuilder sb = new StringBuilder();
+            // Keep the header deliberately in the agreed short format so that the
+            // message is recognisable in logs/tickets; details follow below.
+            sb.AppendLine("Unsupported ECU type [" +
+                          (info.EcuType.Length > 0 ? info.EcuType : "unknown") + "] " +
+                          Path.GetFileName(filename) + " (" + allBytes.Length.ToString() +
+                          " bytes, partnumber " +
+                          (info.PartNumber.Length > 0 ? info.PartNumber : "unknown") + ")");
+            sb.AppendLine();
+            sb.AppendLine("Datei     : " + Path.GetFileName(filename));
+            sb.AppendLine("Groesse   : " + allBytes.Length.ToString() + " Bytes (" +
+                          (allBytes.Length / 1024).ToString() + " KB, 0x" + allBytes.Length.ToString("X") + ")");
+            sb.AppendLine("Bosch-Nr. : " + (info.PartNumber.Length > 0 ? info.PartNumber : "(nicht gefunden)"));
+            sb.AppendLine("VAG-Nr.   : " + (vagNumber.Length > 0 ? vagNumber : "(nicht gefunden)"));
+            sb.AppendLine("Software  : " + (software.Length > 0 ? software : "(nicht gefunden)"));
+            sb.AppendLine("Erkannt   : " + (info.EcuType.Length > 0 ? info.EcuType : "(unbekannt)") +
+                          " / " + parserName);
+            if (info.CarMake.Length > 0 || info.CarType.Length > 0)
+            {
+                sb.AppendLine("Fahrzeug  : " + (info.CarMake + " " + info.CarType).Trim());
+            }
+            sb.AppendLine();
+            sb.AppendLine("Unterstuetzt werden: EDC15P, EDC15P-6, EDC15V/EDC15V-5, EDC15C,");
+            sb.AppendLine("EDC15M, MSA15, MSA12, MSA11, MSA6, EDC16 und EDC17.");
+            sb.AppendLine("256-KB-EDC15V-5 (z. B. 038906018P, SG1623) wird unterstuetzt.");
+            if (allBytes.Length != 0x40000 && allBytes.Length != 0x80000 && allBytes.Length != 0x100000)
+            {
+                sb.AppendLine();
+                sb.AppendLine("Hinweis: erwartet werden 256 KB, 512 KB oder 1 MB,");
+                sb.AppendLine("diese Datei hat " + allBytes.Length.ToString() + " Bytes.");
+            }
+            return sb.ToString();
+        }
+
         public EDCFileType DetermineFileType(string fileName, bool isPrimaryFile)
         {
 
@@ -525,8 +579,77 @@ namespace VAGSuite
             return string.Empty;
         }
 
+        public bool IsEdc15V256KImage(string filename)
+        {
+            // Only genuine 256 KB EDC15V-5 images (known marker pair at all
+            // three block ends) get the target block check.  Any other
+            // 256 KB file is not restricted.
+            try
+            {
+                FileInfo fi = new FileInfo(filename);
+                if (!fi.Exists || fi.Length != Edc15V256Layout.ImageSize)
+                {
+                    return false;
+                }
+                return Edc15V256Layout.HasKnownMarkers(File.ReadAllBytes(filename));
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Suppresses the notice dialog on refused write operations.
+        /// Intended only for headless tests; false in production.
+        /// </summary>
+        public bool SuppressDialogOnRejectedWrite = false;
+
+        /// <summary>
+        /// Blocks write targets that are not allowed on a 256 KB EDC15V-5 image:
+        /// code region, vector/reserved range, checksum field
+        /// and ranges beyond the block end.  Returns true if the
+        /// write operation was refused.
+        /// </summary>
+        private bool RejectUnsafeWrite(int address, int length, string filename)
+        {
+            if (!IsEdc15V256KImage(filename))
+            {
+                return false;
+            }
+            int block;
+            if (Edc15V256Layout.RangeFitsDataArea(address, length, out block))
+            {
+                return false;
+            }
+            string reason = Edc15V256Layout.DescribeProblem(address, length);
+            if (reason.Length == 0)
+            {
+                reason = "0x" + address.ToString("X5") + " + " + length + " Byte ist kein zulaessiges Ziel.";
+            }
+            if (!SuppressDialogOnRejectedWrite)
+            {
+                try
+                {
+                    new frmInfoBox("Schreibvorgang abgelehnt.\r\n\r\n" + reason +
+                        "\r\n\r\nErlaubt sind nur die Datenbereiche der Bloecke 1-3 " +
+                        "(0x38000, 0x00000, 0x08000), jeweils ab +0xB80 bis vor das " +
+                        "Pruefsummenfeld. Die Code-Region 0x10000-0x37FFF wird nie beschrieben.");
+                }
+                catch (Exception)
+                {
+                }
+            }
+            Console.WriteLine("savedatatobinary rejected: " + reason);
+            return true;
+        }
+
         public void savedatatobinary(int address, int length, byte[] data, string filename, bool DoTransActionEntry, string note, EDCFileType type)
         {
+            if (RejectUnsafeWrite(address, length, filename))
+            {
+                return;
+            }
             // depends on filetype (EDC16 is not reversed)
             if (type != EDCFileType.EDC16)
             {
@@ -644,6 +767,16 @@ namespace VAGSuite
                 case EDCFileType.MSA15:
                 case EDCFileType.MSA12:
                 case EDCFileType.MSA11:
+                    // 256 KB EDC15V-5 (e.g. 038 906 018 P / SG 1623) is typed
+                    // as MSA15 by the part number table; its three-block
+                    // checksum is implemented, so handle it here instead of
+                    // falling through to the unimplemented MSA15 path.
+                    allBytes = File.ReadAllBytes(filename);
+                    if (allBytes.Length == EDC15VM256Checksum.ImageSize)
+                    {
+                        res = CalculateEDC15VM256KChecksum(filename, allBytes, verifyOnly, out result);
+                        break;
+                    }
                     //TODO: Implement MSA15 checksum routine here
 
                     // this should be Bosch TDI V3.1 (Version 2.04)
@@ -773,13 +906,84 @@ namespace VAGSuite
             return res;
         }
 
+        /// <summary>
+        /// 256 KB EDC15V-5 checksum: three independent word blocks, fields at
+        /// 0x07FFC, 0x0FFFC and 0x3FFFC.  Verification and repair both use
+        /// <see cref="EDC15VM256Checksum"/>; the repair writes the same file
+        /// the caller passed in, matching the behaviour of the other types.
+        /// </summary>
+        private ChecksumResult CalculateEDC15VM256KChecksum(string filename, byte[] allBytes, bool verifyOnly, out ChecksumResultDetails result)
+        {
+            result = new ChecksumResultDetails();
+            result.TypeResult = ChecksumType.VAG_EDC15VM_256K;
+            result.CalculationResult = ChecksumResult.ChecksumFail;
+
+            uint[] values;
+            string fehler;
+            if (!EDC15VM256Checksum.TryCompute(allBytes, out values, out fehler))
+            {
+                Console.WriteLine("256K checksum: " + fehler);
+                result.CalculationResult = ChecksumResult.ChecksumTypeError;
+                result.TypeResult = ChecksumType.Unknown;
+                return ChecksumResult.ChecksumTypeError;
+            }
+
+            int ok = 0;
+            for (int i = 0; i < EDC15VM256Checksum.BlockCount; i++)
+            {
+                int p = EDC15VM256Checksum.FieldOffsets[i];
+                uint stored = (uint)(allBytes[p] | (allBytes[p + 1] << 8) |
+                                     (allBytes[p + 2] << 16) | (allBytes[p + 3] << 24));
+                if (stored == values[i]) ok++;
+            }
+
+            result.NumberChecksumsTotal = EDC15VM256Checksum.BlockCount;
+            result.NumberChecksumsOk = ok;
+            result.NumberChecksumsFail = EDC15VM256Checksum.BlockCount - ok;
+
+            if (ok == EDC15VM256Checksum.BlockCount)
+            {
+                Console.WriteLine("Checksum 256K matched");
+                result.CalculationOk = true;
+                result.CalculationResult = ChecksumResult.ChecksumOK;
+                return ChecksumResult.ChecksumOK;
+            }
+
+            Console.WriteLine("UpdateChecksum: Checksum 256K failed " + filename);
+            if (!verifyOnly)
+            {
+                if (EDC15VM256Checksum.Fix(allBytes, out fehler))
+                {
+                    File.WriteAllBytes(filename, allBytes);
+                    result.CalculationOk = true;
+                    result.CalculationResult = ChecksumResult.ChecksumOK;
+                    result.NumberChecksumsFail = 0;
+                    result.NumberChecksumsOk = EDC15VM256Checksum.BlockCount;
+                    Console.WriteLine("UpdateChecksum: Checksum 256K fixed");
+                    return ChecksumResult.ChecksumOK;
+                }
+                Console.WriteLine("UpdateChecksum: 256K fix failed: " + fehler);
+            }
+            return ChecksumResult.ChecksumFail;
+        }
+
         private ChecksumResult CalculateEDC15VMChecksum(string filename, byte[] allBytes, bool verifyOnly, out ChecksumResultDetails result)
         {
             ChecksumResult res = new ChecksumResult();
             result = new ChecksumResultDetails();
             result.CalculationResult = ChecksumResult.ChecksumFail; // default = failed
             result.TypeResult = ChecksumType.VAG_EDC15VM_V41;
-            if (/*allBytes.Length != 0x40000 && */allBytes.Length != 0x80000 && allBytes.Length != 0x100000) return res;
+
+            // 256 KB EDC15V-5 images (e.g. 038 906 018 P / SG 1623) use a
+            // three-block layout that the V4.1 routines below do not know:
+            // they are written for the 512 KB and 1 MB variants.  Handle the
+            // 256 KB size explicitly before the size gate.
+            if (allBytes != null && allBytes.Length == EDC15VM256Checksum.ImageSize)
+            {
+                return CalculateEDC15VM256KChecksum(filename, allBytes, verifyOnly, out result);
+            }
+
+            if (allBytes == null || (allBytes.Length != 0x80000 && allBytes.Length != 0x100000)) return res;
             if (allBytes.Length >= 0x80000)
             {
                 if (allBytes[0x50008] == 'V' && allBytes[0x50009] == '4' && allBytes[0x5000A] == '.' && allBytes[0x5000B] == '1')
@@ -861,6 +1065,10 @@ namespace VAGSuite
 
         public void savedatatobinary(int address, int length, byte[] data, string filename, bool DoTransActionEntry, EDCFileType type)
         {
+            if (RejectUnsafeWrite(address, length, filename))
+            {
+                return;
+            }
             // depends on filetype (EDC16 is not reversed)
             if (type != EDCFileType.EDC16)
             {
