@@ -66,7 +66,7 @@ namespace VAGSuite
             this.labelControl1.Name = "labelControl1";
             this.labelControl1.Size = new System.Drawing.Size(343, 35);
             this.labelControl1.TabIndex = 0;
-            this.labelControl1.Text = "VAGEDCSuite";
+            this.labelControl1.Text = "VAGEDCSuite-Reloaded";
             this.labelControl1.DoubleClick += new System.EventHandler(this.labelControl1_DoubleClick);
             // 
             // simpleButton1

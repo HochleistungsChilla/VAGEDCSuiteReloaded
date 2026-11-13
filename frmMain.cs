@@ -242,7 +242,7 @@ namespace VAGSuite
                         Console.WriteLine("Failed to remove read only flag: " + E.Message);
                         barReadOnly.Caption = "File is READ ONLY";
                     }
-                    this.Text = "VAGEDCSuite [ " + Path.GetFileName(Tools.Instance.m_currentfile) + " ]";
+                    this.Text = "VAGEDCSuite-Reloaded [ " + Path.GetFileName(Tools.Instance.m_currentfile) + " ]";
                     Tools.Instance.m_symbols = new SymbolCollection();
                     Tools.Instance.codeBlockList = new List<CodeBlock>();
                     barFilenameText.Caption = Path.GetFileName(fileName);
@@ -2479,6 +2479,7 @@ namespace VAGSuite
             LoadLayoutFiles();
             SyncTargetBlockItems();
             RefreshTargetBlockCaptions();
+            StartUpdateCheck();
             
             if (m_appSettings.DebugMode)
             {
@@ -2492,16 +2493,85 @@ namespace VAGSuite
 
         private void btnCheckForUpdates_ItemClick(object sender, ItemClickEventArgs e)
         {
+            UpdateChecker.Result result;
+            Cursor previous = Cursor.Current;
             try
             {
-                if (m_msiUpdater != null)
+                Cursor.Current = Cursors.WaitCursor;
+                result = UpdateChecker.Check();
+            }
+            finally
+            {
+                Cursor.Current = previous;
+            }
+            ShowUpdateResult(result, true);
+        }
+
+        /// <summary>
+        /// Asks GitHub in the background whether a newer release exists.  The
+        /// answer is only shown when there is one; a failed check stays silent.
+        /// </summary>
+        private void StartUpdateCheck()
+        {
+            try
+            {
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate(object state)
                 {
-                    m_msiUpdater.CheckForUpdates("Global", "http://trionic.mobixs.eu/vagedcsuite/", "", "", false);
-                }
+                    UpdateChecker.Result result = UpdateChecker.Check();
+                    if (!result.IsNewer(CurrentVersion())) return;
+                    try
+                    {
+                        BeginInvoke(new MethodInvoker(delegate() { ShowUpdateResult(result, false); }));
+                    }
+                    catch (Exception)
+                    {
+                        // The window is already gone; nothing to tell.
+                    }
+                });
             }
             catch (Exception E)
             {
-                Console.WriteLine(E.Message);
+                Console.WriteLine("StartUpdateCheck failed: " + E.Message);
+            }
+        }
+
+        private static Version CurrentVersion()
+        {
+            try
+            {
+                return new Version(Application.ProductVersion);
+            }
+            catch (Exception)
+            {
+                return new Version(0, 0, 0);
+            }
+        }
+
+        private void ShowUpdateResult(UpdateChecker.Result result, bool userAsked)
+        {
+            Version current = CurrentVersion();
+
+            if (!result.Checked)
+            {
+                if (userAsked)
+                {
+                    new frmInfoBox("Could not check for updates.\r\n\r\n" + result.Error);
+                }
+                return;
+            }
+
+            if (result.IsNewer(current))
+            {
+                new frmInfoBox("A newer version is available.\r\n\r\n" +
+                               "Installed : " + current.ToString(3) + "\r\n" +
+                               "Available : " + result.Latest.ToString(3) + "\r\n\r\n" +
+                               result.Url);
+                return;
+            }
+
+            if (userAsked)
+            {
+                new frmInfoBox("You are running the latest version (" + current.ToString(3) + ").");
             }
         }
 
@@ -2625,7 +2695,7 @@ namespace VAGSuite
         private void btnAbout_ItemClick(object sender, ItemClickEventArgs e)
         {
             frmAbout about = new frmAbout();
-            about.SetInformation("VAGEDCSuite v" + System.Windows.Forms.Application.ProductVersion.ToString());
+            about.SetInformation("VAGEDCSuite-Reloaded v" + System.Windows.Forms.Application.ProductVersion.ToString());
             about.ShowDialog();
         }
 
@@ -2921,7 +2991,7 @@ namespace VAGSuite
             btnRollforward.Enabled = false;
             btnShowTransactionLog.Enabled = false;
 
-            this.Text = "VAGEDCSuite";
+            this.Text = "VAGEDCSuite-Reloaded";
         }
 
 
@@ -2965,7 +3035,7 @@ namespace VAGSuite
                     CreateProjectBackupFile();
                     UpdateRollbackForwardControls();
                     m_appSettings.Lastprojectname = Tools.Instance.m_CurrentWorkingProject;
-                    this.Text = "VAGEDCSuite [Project: " + projectname + "]";
+                    this.Text = "VAGEDCSuite-Reloaded [Project: " + projectname + "]";
                 }
             }
         }

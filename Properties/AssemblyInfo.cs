@@ -5,11 +5,11 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("VAGSuite")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyTitle("VAGEDCSuite-Reloaded")]
+[assembly: AssemblyDescription("VAG/EDC15 ECU tuning suite, continued fork")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Dilemma")]
-[assembly: AssemblyProduct("VAGSuite")]
+[assembly: AssemblyProduct("VAGEDCSuite-Reloaded")]
 [assembly: AssemblyCopyright("Copyright © Dilemma 2013")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
