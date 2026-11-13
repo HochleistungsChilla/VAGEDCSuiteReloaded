@@ -17,6 +17,23 @@ namespace VAGSuite
 
     public sealed class Tools
     {
+        /// <summary>
+        /// Shows a user message.  The UI wires a dialog here (frmInfoBox);
+        /// when nothing is wired, a plain MessageBox is used.  This keeps the
+        /// core free of any DevExpress dependency.
+        /// </summary>
+        public Action<string> ShowMessageDelegate = null;
+
+        public void ShowMessage(string message)
+        {
+            if (ShowMessageDelegate != null)
+            {
+                ShowMessageDelegate(message);
+                return;
+            }
+            System.Windows.Forms.MessageBox.Show(message, "VAGEDCSuite-Reloaded");
+        }
+
         private static volatile Tools instance;
         private static object syncRoot = new Object();
 
@@ -631,7 +648,7 @@ namespace VAGSuite
             {
                 try
                 {
-                    new frmInfoBox("Write refused.\r\n\r\n" + reason +
+                    ShowMessage("Write refused.\r\n\r\n" + reason +
                         "\r\n\r\nOnly the data areas of blocks 1-3 are permitted " +
                         "(0x38000, 0x00000, 0x08000), each from +0xB80 up to the " +
                         "checksum field. The code region 0x10000-0x37FFF is never written.");
@@ -691,7 +708,7 @@ namespace VAGSuite
                 }
                 catch (Exception E)
                 {
-                    frmInfoBox info = new frmInfoBox("Failed to write to binary. Is it read-only? Details: " + E.Message);
+                    ShowMessage("Failed to write to binary. Is it read-only? Details: " + E.Message);
                 }
             }
         }

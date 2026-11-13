@@ -70,47 +70,6 @@ namespace VAGSuite
 
     public delegate void DelegateStartReleaseNotePanel(string filename, string version);
 
-    public enum GearboxType : int
-    {
-        Automatic,
-        Manual,
-        FourWheelDrive
-    }
-
-    public enum EDCFileType : int
-    {
-        EDC15P,
-        EDC15P6, // different map structure
-        EDC15V,
-        EDC15M,
-        EDC15C,
-        EDC16,
-        EDC17,  // 512Kb/2048Kb
-        MSA6,
-        MSA11,
-        MSA12,
-        MSA15,
-        Unknown
-    }
-
-    public enum EngineType : int
-    {
-        cc1200,
-        cc1400,
-        cc1600,
-        cc1900,
-        cc2500
-    }
-
-    public enum ImportFileType : int
-    {
-        XML,
-        A2L,
-        CSV,
-        AS2,
-        Damos
-    }
-
     public partial class frmMain : DevExpress.XtraEditors.XtraForm
     {
         private AppSettings m_appSettings;
@@ -137,6 +96,9 @@ namespace VAGSuite
             }
                 
             InitializeComponent();
+            // Core files call Tools.ShowMessage instead of frmInfoBox; the UI
+            // wires the dialog here.
+            Tools.Instance.ShowMessageDelegate = delegate(string message) { new frmInfoBox(message); };
             InitTargetBlockUi();
             try
             {
