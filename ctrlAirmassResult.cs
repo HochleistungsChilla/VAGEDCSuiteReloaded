@@ -89,7 +89,53 @@ namespace VAGSuite
         public ctrlAirmassResult()
         {
             InitializeComponent();
+
+            // Shows which data block and address the calculation really used;
+            // block 2 and 3 can carry identical maps, so the numbers alone do
+            // not tell them apart.
+            lblSource = new System.Windows.Forms.Label();
+            lblSource.AutoSize = false;
+            lblSource.Location = new System.Drawing.Point(16, 136);
+            lblSource.Size = new System.Drawing.Size(195, 18);
+            lblSource.Text = string.Empty;
+            groupControl2.Controls.Add(lblSource);
+
+            // The DevExpress ComboBoxEdit never opens its list under Wine
+            // (tested with a minimal form: the plain WinForms combo opens, the
+            // DevExpress one does not).  These two plain combos replace them and
+            // sit on the same spot; the designer controls stay hidden.
+            comboBoxEdit2.Visible = false;
+            comboBoxEdit1.Visible = false;
+
+            cmbMode = new System.Windows.Forms.ComboBox();
+            cmbMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            cmbMode.Location = comboBoxEdit2.Location;
+            cmbMode.Size = new System.Drawing.Size(comboBoxEdit2.Width, 21);
+            cmbMode.Items.AddRange(new object[]
+            {
+                "Show IQ",
+                "Show estimated torque",
+                "Show estimated horsepower"
+            });
+            cmbMode.SelectedIndex = 0;
+            cmbMode.SelectedIndexChanged += new EventHandler(cmbMode_SelectedIndexChanged);
+            groupControl2.Controls.Add(cmbMode);
+
+            cmbBank = new System.Windows.Forms.ComboBox();
+            cmbBank.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            cmbBank.Location = comboBoxEdit1.Location;
+            cmbBank.Size = new System.Drawing.Size(comboBoxEdit1.Width, 21);
+            cmbBank.Items.AddRange(new object[] { "Automatic bank selection" });
+            cmbBank.SelectedIndex = 0;
+            cmbBank.SelectedIndexChanged += new EventHandler(cmbBank_SelectedIndexChanged);
+            groupControl2.Controls.Add(cmbBank);
+            cmbBank.BringToFront();
+            cmbMode.BringToFront();
         }
+
+        private System.Windows.Forms.Label lblSource;
+        private System.Windows.Forms.ComboBox cmbBank;
+        private System.Windows.Forms.ComboBox cmbMode;
 
 
 
@@ -258,6 +304,19 @@ namespace VAGSuite
             FillComboBoxBankSelection();
             
             SymbolHelper driverWishHelper = GetSymbolLike(symbols, "Driver wish", selectedBank);
+            try
+            {
+                string src = "source: 0x" + driverWishHelper.Flash_start_address.ToString("X5");
+                if (IsEdc15V256K())
+                {
+                    int blk = Edc15V256Layout.BlockOf((int)driverWishHelper.Flash_start_address);
+                    if (blk > 0) src = "Block " + blk + " @ 0x" + driverWishHelper.Flash_start_address.ToString("X5");
+                }
+                if (lblSource != null) lblSource.Text = src;
+            }
+            catch (Exception)
+            {
+            }
             int[] pedalrequestmap = readIntdatafromfile(filename, (int)driverWishHelper.Flash_start_address, driverWishHelper.Length);
             limitermap = new int[pedalrequestmap.Length];
             int[] resulttable = new int[pedalrequestmap.Length]; // result 
@@ -335,7 +394,7 @@ namespace VAGSuite
                     int horsepower = Tools.Instance.TorqueToPower(torque, rpm);
 
                    // if (checkEdit5.Checked) horsepower = Tools.Instance.TorqueToPowerkW(torque, rpm);
-                   // if (checkEdit6.Checked) torque = Tools.Instance.IQToTorque(Convert.ToInt32(o), rpm, m_numberCylinders);//AirmassToTorqueLbft(Convert.ToInt32(o), rpm);
+                   // if (checkEdit6.Checked) torque = Convert.ToInt32(torque * 0.7375621); // Nm to lbft
 
                     horsepower /= 100;
                     torque /= 100;
@@ -397,11 +456,9 @@ namespace VAGSuite
         private void AddBankItem(string text)
         {
             if (text == null || text.Length == 0) return;
-            foreach (string existing in comboBoxEdit1.Properties.Items)
-            {
-                if (existing == text) return;
-            }
-            comboBoxEdit1.Properties.Items.Add(text);
+            if (cmbBank == null) return;
+            if (cmbBank.Items.Contains(text)) return;
+            cmbBank.Items.Add(text);
         }
 
         private bool SymbolExists(string symbolname)
@@ -875,7 +932,7 @@ namespace VAGSuite
                     int horsepower = Tools.Instance.TorqueToPower(torque, rpm);
 
                     if (checkEdit5.Checked) horsepower = Tools.Instance.TorqueToPowerkW(torque, rpm);
-                    if (checkEdit6.Checked) torque = Tools.Instance.IQToTorque(Convert.ToInt32(o), rpm, m_numberCylinders);//AirmassToTorqueLbft(Convert.ToInt32(o), rpm);
+                    if (checkEdit6.Checked) torque = Convert.ToInt32(torque * 0.7375621); // Nm to lbft
 
                     horsepower /= 100;
                     torque /= 100;
@@ -983,6 +1040,15 @@ namespace VAGSuite
         }
 
         private void comboBoxEdit2_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            gridControl1.Refresh();
+            if (xtraTabControl1.SelectedTabPage.Name == xtraTabPage2.Name)
+            {
+                LoadGraphWithDetails();
+            }
+        }
+
+        private void cmbMode_SelectedIndexChanged(object sender, EventArgs e)
         {
             gridControl1.Refresh();
             if (xtraTabControl1.SelectedTabPage.Name == xtraTabPage2.Name)
@@ -1148,7 +1214,7 @@ namespace VAGSuite
                         {
                             e.Graphics.FillPolygon(Brushes.DarkGray, pnts, System.Drawing.Drawing2D.FillMode.Winding);
                         }
-                        if (comboBoxEdit2.SelectedIndex == 1)
+                        if (cmbMode != null && cmbMode.SelectedIndex == 1)
                         {
                             // convert airmass to torque
                             if (_ECUType.Contains("EDC16"))
@@ -1164,13 +1230,14 @@ namespace VAGSuite
                                 int torque = Tools.Instance.IQToTorque(Convert.ToInt32(e.CellValue), rpm, m_numberCylinders);
                                 if (checkEdit6.Checked)
                                 {
-                                    torque = Tools.Instance.IQToTorque(Convert.ToInt32(e.CellValue), rpm, m_numberCylinders);// AirmassToTorqueLbft(Convert.ToInt32(e.CellValue), rpm);
+                                    // Nm to lbft
+                                    torque = Convert.ToInt32(torque * 0.7375621);
                                 }
                                 torque /= 100;
                                 e.DisplayText = torque.ToString();
                             }
                         }
-                        else if (comboBoxEdit2.SelectedIndex == 2)
+                        else if (cmbMode != null && cmbMode.SelectedIndex == 2)
                         {
                             if (_ECUType.Contains("EDC16"))
                             {
@@ -1330,9 +1397,10 @@ namespace VAGSuite
 
         private int selectedBank = 0;
 
-        private void comboBoxEdit1_SelectedIndexChanged_1(object sender, EventArgs e)
+        private void cmbBank_SelectedIndexChanged(object sender, EventArgs e)
         {
-            selectedBank = ExtractSelectedBank(comboBoxEdit1.SelectedItem.ToString());
+            if (cmbBank.SelectedItem == null) return;
+            selectedBank = ExtractSelectedBank(cmbBank.SelectedItem.ToString());
             Calculate(m_currentfile, m_symbols);
         }
 

@@ -279,7 +279,7 @@ namespace VAGSuite
             "Automatic bank selection"});
             this.comboBoxEdit1.Size = new System.Drawing.Size(195, 20);
             this.comboBoxEdit1.TabIndex = 26;
-            this.comboBoxEdit1.SelectedIndexChanged += new System.EventHandler(this.comboBoxEdit1_SelectedIndexChanged_1);
+            
             // 
             // checkEdit6
             // 
