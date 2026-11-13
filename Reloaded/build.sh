@@ -28,6 +28,8 @@ wine "$CSC" /nologo /target:winexe /out:Reloaded.exe \
     /reference:lib/Krypton.Ribbon.dll \
     /reference:lib/OxyPlot.dll \
     /reference:lib/OxyPlot.WindowsForms.dll \
+    ../Edc15V256Layout.cs \
+    ../EDC15VM256Checksum.cs \
     Main.cs
 
 # Copy the private assemblies next to the .exe (the .NET Framework CLR, and

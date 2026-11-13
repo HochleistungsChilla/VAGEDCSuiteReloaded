@@ -57,5 +57,11 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Main.cs" />
+    <Compile Include="..\Edc15V256Layout.cs">
+      <Link>Edc15V256Layout.cs</Link>
+    </Compile>
+    <Compile Include="..\EDC15VM256Checksum.cs">
+      <Link>EDC15VM256Checksum.cs</Link>
+    </Compile>
   </ItemGroup>
 </Project>

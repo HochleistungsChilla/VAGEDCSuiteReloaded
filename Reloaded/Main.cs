@@ -1,94 +1,188 @@
 using System;
+using System.Drawing;
+using System.IO;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using Krypton.Ribbon;
 using Krypton.Toolkit;
-using OxyPlot;
-using OxyPlot.Series;
-using OxyPlot.WindowsForms;
+using VAGSuite;
 
 namespace Reloaded
 {
     /// <summary>
-    /// Minimal proof-of-concept: a Krypton ribbon (one tab, one group, two
-    /// buttons) plus an OxyPlot PlotView with two line series, targeting the
-    /// .NET Framework 4.0 (runs on Windows XP SP3 through Windows 11).
+    /// Skeleton of the DevExpress-free VAGEDCSuite Reloaded UI: a Krypton
+    /// ribbon and, on "Open", a 256 KB EDC15V-5 image is inspected with the
+    /// clean core (Edc15V256Layout + EDC15VM256Checksum).  No DevExpress.
     /// </summary>
     public class MainForm : KryptonForm
     {
-        private readonly KryptonRibbon _ribbon;
-        private readonly PlotView _plotView;
+        private readonly Label _infoLabel;
+        private readonly DataGridView _grid;
+        private readonly TextBox _report;
 
         public MainForm()
         {
-            Text = "Reloaded — Krypton ribbon + OxyPlot on .NET 4.0";
-            Width = 960;
+            Text = "VAGEDCSuite-Reloaded";
+            Width = 900;
             Height = 640;
+            StartPosition = FormStartPosition.CenterScreen;
 
-            // --- Krypton ribbon: one tab, one group, two buttons -------------
-            _ribbon = new KryptonRibbon { Dock = DockStyle.Top };
-
-            KryptonRibbonTab tab = new KryptonRibbonTab { Text = "Home" };
-            KryptonRibbonGroup group = new KryptonRibbonGroup
+            // --- ribbon -------------------------------------------------------
+            KryptonRibbon ribbon = new KryptonRibbon { Dock = DockStyle.Top };
+            KryptonRibbonTab fileTab = new KryptonRibbonTab { Text = "File" };
+            KryptonRibbonGroup fileGroup = new KryptonRibbonGroup
             {
-                TextLine1 = "Actions",
-                TextLine2 = "Sample group"
+                TextLine1 = "File",
+                TextLine2 = "Image"
             };
-
-            KryptonRibbonGroupButton button1 = new KryptonRibbonGroupButton
+            KryptonRibbonGroupButton openButton = new KryptonRibbonGroupButton
             {
-                TextLine1 = "Button 1",
-                TextLine2 = "First"
+                TextLine1 = "Open",
+                TextLine2 = "binary"
             };
-            KryptonRibbonGroupButton button2 = new KryptonRibbonGroupButton
-            {
-                TextLine1 = "Button 2",
-                TextLine2 = "Second"
-            };
-            button1.Click += (s, e) => MessageBox.Show(this, "Button 1 clicked", "Reloaded");
-            button2.Click += (s, e) => MessageBox.Show(this, "Button 2 clicked", "Reloaded");
-
-            // Buttons are KryptonRibbonGroupItem, not KryptonRibbonGroupContainer,
-            // so they must be wrapped in a triple (a container) before being added
-            // to the group's container collection.
+            openButton.Click += (s, e) => OpenFile();
             KryptonRibbonGroupTriple triple = new KryptonRibbonGroupTriple();
-            triple.Items.Add(button1);
-            triple.Items.Add(button2);
-            group.Items.Add(triple);
-            tab.Groups.Add(group);
-            _ribbon.RibbonTabs.Add(tab);
+            triple.Items.Add(openButton);
+            fileGroup.Items.Add(triple);
+            fileTab.Groups.Add(fileGroup);
+            ribbon.RibbonTabs.Add(fileTab);
 
-            // --- OxyPlot PlotView with two line series -----------------------
-            _plotView = new PlotView { Dock = DockStyle.Fill };
+            // --- info strip ---------------------------------------------------
+            _infoLabel = new Label
+            {
+                Dock = DockStyle.Top,
+                Height = 52,
+                Padding = new Padding(8),
+                TextAlign = ContentAlignment.MiddleLeft,
+                Font = new Font("Segoe UI", 10F),
+                Text = "Open a 256 KB EDC15V-5 binary."
+            };
 
-            PlotModel model = new PlotModel { Title = "Two line series (OxyPlot 1.0.0)" };
-            model.Series.Add(MakeSeries("Series A", OxyColors.Blue, 0.0));
-            model.Series.Add(MakeSeries("Series B", OxyColors.Red, 1.0));
-            _plotView.Model = model;
+            // --- block grid ---------------------------------------------------
+            _grid = new DataGridView
+            {
+                Dock = DockStyle.Fill,
+                ReadOnly = true,
+                AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false,
+                RowHeadersVisible = false,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                SelectionMode = DataGridViewSelectionMode.FullRowSelect
+            };
+            _grid.Columns.Add("block", "Block");
+            _grid.Columns.Add("range", "Address range");
+            _grid.Columns.Add("gearbox", "Gearbox");
+            _grid.Columns.Add("code", "Code");
 
-            Controls.Add(_plotView);
-            Controls.Add(_ribbon);
+            // --- checksum report ---------------------------------------------
+            _report = new TextBox
+            {
+                Dock = DockStyle.Bottom,
+                Height = 180,
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                Font = new Font("Consolas", 9F),
+                BackColor = Color.White
+            };
+
+            Controls.Add(_grid);
+            Controls.Add(_infoLabel);
+            Controls.Add(_report);
+            Controls.Add(ribbon);
         }
 
-        private static LineSeries MakeSeries(string title, OxyColor color, double phase)
+        private void OpenFile()
         {
-            LineSeries s = new LineSeries { Title = title, Color = color };
-            for (int i = 0; i <= 40; i++)
+            using (OpenFileDialog dlg = new OpenFileDialog())
             {
-                double x = i / 4.0;
-                s.Points.Add(new DataPoint(x, Math.Sin(x + phase)));
+                dlg.Filter = "Binary images (*.bin)|*.bin|All files (*.*)|*.*";
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                Inspect(dlg.FileName);
             }
-            return s;
+        }
+
+        /// <summary>Loads and inspects a file (also used for the CLI arg).</summary>
+        public void LoadInitial(string path) { Inspect(path); }
+
+        private void Inspect(string path)
+        {
+            _grid.Rows.Clear();
+            _report.Clear();
+
+            byte[] image;
+            try
+            {
+                image = File.ReadAllBytes(path);
+            }
+            catch (Exception ex)
+            {
+                _infoLabel.Text = "Could not read file: " + ex.Message;
+                return;
+            }
+
+            string part = FindVagPartNumber(image);
+            _infoLabel.Text = string.Format(
+                "{0}   |   {1} bytes (0x{1:X})   |   part number: {2}",
+                Path.GetFileName(path), image.Length, string.IsNullOrEmpty(part) ? "?" : part);
+
+            bool known256 = image.Length == Edc15V256Layout.ImageSize &&
+                            Edc15V256Layout.HasKnownMarkers(image);
+
+            if (!known256)
+            {
+                _infoLabel.Text += "   |   not a 256 KB EDC15V-5 image (no known markers)";
+                _report.Text = "Not a 256 KB EDC15V-5 image.";
+                return;
+            }
+
+            // One row per data block, with the gearbox family and the code
+            // block code read from the file.
+            for (int block = 1; block <= 3; block++)
+            {
+                string role = Edc15V256Layout.DescribeGearbox(image, block);
+                string shown = role;
+                if (role == "Manual" && block == 2) shown = "Manual, FWD";
+                if (role == "Manual" && block == 3) shown = "4x4";
+                _grid.Rows.Add(
+                    Edc15V256Layout.BlockNames[block - 1],
+                    Edc15V256Layout.BlockRanges[block - 1],
+                    shown,
+                    Edc15V256Layout.DescribeGearboxCode(image, block));
+            }
+
+            // Checksum: computed vs stored for all three blocks.
+            int okFields = EDC15VM256Checksum.CountOkFields(image, out string err);
+            _report.AppendText(string.Format(
+                "Checksum: {0}/{1} fields OK{2}\r\n",
+                okFields, EDC15VM256Checksum.BlockCount, string.IsNullOrEmpty(err) ? "" : "  (" + err + ")"));
+            _report.AppendText("\r\n");
+            _report.AppendText(EDC15VM256Checksum.Verify(image).Report);
+        }
+
+        /// <summary>
+        /// First VAG part number found in the file (for example 038906018P),
+        /// scanned from the printable bytes of the code block headers.
+        /// </summary>
+        private static string FindVagPartNumber(byte[] image)
+        {
+            string ascii = Encoding.GetEncoding(28591).GetString(image);
+            Match match = Regex.Match(ascii, @"03[0-9]{7}[A-Z]");
+            return match.Success ? match.Value : string.Empty;
         }
     }
 
     internal static class Program
     {
         [STAThread]
-        private static void Main()
+        private static void Main(string[] args)
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
+            MainForm form = new MainForm();
+            if (args.Length > 0) form.LoadInitial(args[0]);
+            Application.Run(form);
         }
     }
 }
