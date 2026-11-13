@@ -1,4 +1,4 @@
-# VAGEDCSuite-Reloaded
+# VAGEDCSuiteReloaded
 
 A continued fork of [VAGEDCSuite](https://github.com/Blackfrosch/VAGEDCSuite) — the open
 VAG/EDC15 ECU tuning suite by Blackfrosch, whose last upstream commit dates from 2013.
