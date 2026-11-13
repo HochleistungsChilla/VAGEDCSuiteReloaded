@@ -625,16 +625,16 @@ namespace VAGSuite
             string reason = Edc15V256Layout.DescribeProblem(address, length);
             if (reason.Length == 0)
             {
-                reason = "0x" + address.ToString("X5") + " + " + length + " Byte ist kein zulaessiges Ziel.";
+                reason = "0x" + address.ToString("X5") + " + " + length + " bytes is not a permitted target.";
             }
             if (!SuppressDialogOnRejectedWrite)
             {
                 try
                 {
-                    new frmInfoBox("Schreibvorgang abgelehnt.\r\n\r\n" + reason +
-                        "\r\n\r\nErlaubt sind nur die Datenbereiche der Bloecke 1-3 " +
-                        "(0x38000, 0x00000, 0x08000), jeweils ab +0xB80 bis vor das " +
-                        "Pruefsummenfeld. Die Code-Region 0x10000-0x37FFF wird nie beschrieben.");
+                    new frmInfoBox("Write refused.\r\n\r\n" + reason +
+                        "\r\n\r\nOnly the data areas of blocks 1-3 are permitted " +
+                        "(0x38000, 0x00000, 0x08000), each from +0xB80 up to the " +
+                        "checksum field. The code region 0x10000-0x37FFF is never written.");
                 }
                 catch (Exception)
                 {

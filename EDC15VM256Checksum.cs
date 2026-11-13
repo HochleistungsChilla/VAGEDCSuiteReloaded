@@ -188,7 +188,7 @@ namespace VAGSuite
             }
             if (variant == null)
             {
-                fehler = "Keine Pruefsummen-Variante uebergeben.";
+                fehler = "No checksum variant supplied.";
                 return false;
             }
 
@@ -200,7 +200,7 @@ namespace VAGSuite
                 // and must stay inside the image.
                 if (blockEnd != FieldOffsets[i] + 4 || blockEnd > bin.Length)
                 {
-                    fehler = "Block " + i + " liegt ausserhalb des erwarteten Layouts.";
+                    fehler = "Block " + i + " is outside the expected layout.";
                     return false;
                 }
 
@@ -252,7 +252,7 @@ namespace VAGSuite
 
             if (blocks == null || blocks.Length != BlockCount)
             {
-                fehler = "Es muessen genau " + BlockCount + " Blockflags uebergeben werden.";
+                fehler = "Exactly " + BlockCount + " block flags must be supplied.";
                 return false;
             }
 
@@ -324,7 +324,7 @@ namespace VAGSuite
             if (!TryCompute(bin, out values, out fehler))
             {
                 result.AllOk = false;
-                result.Report = "   " + (fehler ?? "unbekannter Fehler") + Environment.NewLine;
+                result.Report = "   " + (fehler ?? "unknown error") + Environment.NewLine;
                 return result;
             }
 
@@ -342,7 +342,7 @@ namespace VAGSuite
                 sb.AppendLine("   Block " + (i + 1) + " @0x" + p.ToString("X5") +
                               ": calc=0x" + values[i].ToString("X8") +
                               " file=0x" + stored.ToString("X8") +
-                              (hit ? "  OK" : "  FALSCH"));
+                              (hit ? "  OK" : "  WRONG"));
             }
 
             result.AllOk = allOk;
@@ -370,7 +370,7 @@ namespace VAGSuite
             {
                 return false;
             }
-            info = "Alle drei Blockenden tragen den Marker 0x" +
+            info = "All three block ends carry marker 0x" +
                    found.MarkerText + " (" + found.Name + ").";
             return true;
         }
@@ -415,7 +415,7 @@ namespace VAGSuite
                     if (names.Length > 0) names.Append(", ");
                     names.Append(v.Name);
                 }
-                info = "Mehrdeutige Marker: " + names.ToString() + ".";
+                info = "Ambiguous markers: " + names.ToString() + ".";
                 return null;
             }
 
@@ -428,16 +428,16 @@ namespace VAGSuite
                 sb.Append("Block " + (i + 1) + " @0x" + expectedEnd.ToString("X5") + ": ");
                 if (scannedEnd == expectedEnd)
                 {
-                    sb.Append("Marker eines unbekannten Paares. ");
+                    sb.Append("marker of an unknown pair. ");
                 }
                 else if (scannedEnd < 0)
                 {
-                    sb.Append("kein bekannter Marker. ");
+                    sb.Append("no known marker. ");
                 }
                 else
                 {
-                    sb.Append("Marker bei 0x" + scannedEnd.ToString("X5") +
-                              " statt 0x" + expectedEnd.ToString("X5") + ". ");
+                    sb.Append("marker at 0x" + scannedEnd.ToString("X5") +
+                              " instead of 0x" + expectedEnd.ToString("X5") + ". ");
                 }
             }
             info = sb.ToString().TrimEnd();
@@ -453,7 +453,7 @@ namespace VAGSuite
             fehler = null;
             if (bin == null)
             {
-                fehler = "Kein Datenpuffer uebergeben.";
+                fehler = "No data buffer supplied.";
                 return false;
             }
             if (bin.Length != ImageSize)

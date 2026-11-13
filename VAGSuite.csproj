@@ -181,9 +181,6 @@
     <Compile Include="ChipMergeSplit.cs" />
     <Compile Include="Edc15V256Layout.cs" />
     <Compile Include="TargetBlockWriter.cs" />
-    <Compile Include="frmTargetBlocks.cs">
-      <SubType>Form</SubType>
-    </Compile>
     <Compile Include="frmBrowseFiles.cs">
       <SubType>Form</SubType>
     </Compile>

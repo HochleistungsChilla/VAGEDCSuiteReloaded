@@ -109,21 +109,21 @@ namespace VAGSuite
             if (string.IsNullOrEmpty(filename) || !File.Exists(filename))
             {
                 r.Refused = true;
-                r.Refusal = "Datei nicht gefunden: " + filename;
+                r.Refusal = "File not found: " + filename;
                 return r;
             }
             byte[] probeImage = File.ReadAllBytes(filename);
             if (probeImage.Length != Edc15V256Layout.ImageSize)
             {
                 r.Refused = true;
-                r.Refusal = "Falsche Dateigroesse: 0x" + probeImage.Length.ToString("X") +
-                            " statt 0x" + Edc15V256Layout.ImageSize.ToString("X") + " (256 KB).";
+                r.Refusal = "Wrong file size: 0x" + probeImage.Length.ToString("X") +
+                            " instead of 0x" + Edc15V256Layout.ImageSize.ToString("X") + " (256 KB).";
                 return r;
             }
             if (length <= 0)
             {
                 r.Refused = true;
-                r.Refusal = "Laenge muss groesser als 0 sein.";
+                r.Refusal = "Length must be greater than 0.";
                 return r;
             }
 
@@ -163,7 +163,7 @@ namespace VAGSuite
                 if (targetProblem.Length > 0)
                 {
                     r.Refused = true;
-                    r.Refusal = "Ziel " + Edc15V256Layout.BlockNames[b - 1] + ": " + targetProblem;
+                    r.Refusal = "Target " + Edc15V256Layout.BlockNames[b - 1] + ": " + targetProblem;
                     return r;
                 }
                 targets.Add(b);
@@ -182,10 +182,10 @@ namespace VAGSuite
         private static string BuildPlanMessage(TargetBlockWriteResult r, int address, int length, int relative)
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("Quelle: " + Edc15V256Layout.BlockNames[r.SourceBlock - 1] +
-                          ", 0x" + address.ToString("X5") + ", " + length + " Byte");
-            sb.AppendLine("Relativer Offset im Fenster: 0x" + relative.ToString("X4"));
-            sb.AppendLine("Zielbloecke: " + r.BlockList(r.Targets));
+            sb.AppendLine("Source: " + Edc15V256Layout.BlockNames[r.SourceBlock - 1] +
+                          ", 0x" + address.ToString("X5") + ", " + length + " bytes");
+            sb.AppendLine("Relative offset in the window: 0x" + relative.ToString("X4"));
+            sb.AppendLine("Target blocks: " + r.BlockList(r.Targets));
             foreach (int b in r.Targets)
             {
                 sb.AppendLine("  " + Edc15V256Layout.BlockNames[b - 1] + " -> 0x" +
@@ -218,7 +218,7 @@ namespace VAGSuite
             if (data == null || data.Length != length)
             {
                 plan.Refused = true;
-                plan.Refusal = "Datenpuffer passt nicht zur Laenge (" +
+                plan.Refusal = "Data buffer does not match the length (" +
                                (data == null ? "null" : data.Length.ToString()) + " vs " + length + ").";
                 return plan;
             }
@@ -227,7 +227,7 @@ namespace VAGSuite
             if ((length & 1) != 0)
             {
                 plan.Refused = true;
-                plan.Refusal = "Ungerade Laenge (" + length + ") wird von der Byteordnung nicht unterstuetzt.";
+                plan.Refusal = "Odd length (" + length + ") is not supported by the byte order.";
                 return plan;
             }
 
@@ -249,7 +249,7 @@ namespace VAGSuite
             }
             catch (Exception ex)
             {
-                plan.Refusal = "Schreiben fehlgeschlagen: " + ex.Message;
+                plan.Refusal = "Write failed: " + ex.Message;
                 plan.Ok = false;
                 plan.Message = plan.Refusal;
                 return plan;
@@ -283,7 +283,7 @@ namespace VAGSuite
             string fixError;
             if (!EDC15VM256Checksum.FixSelected(after, fields, out fixError))
             {
-                plan.Refusal = "Pruefsumme konnte nicht neu berechnet werden: " + fixError;
+                plan.Refusal = "Checksum could not be recomputed: " + fixError;
                 plan.Ok = false;
                 plan.Message = plan.Refusal;
                 return plan;
@@ -304,23 +304,23 @@ namespace VAGSuite
         private static string BuildResultMessage(TargetBlockWriteResult r, int address, int length)
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("Geschrieben: " + r.BlockList(r.Targets) +
-                          " (" + length + " Byte ab 0x" + address.ToString("X5") + " als Quelle)");
-            sb.AppendLine("Geaendert: " + r.BlockList(r.ChangedBlocks));
-            sb.AppendLine("Neu versiegelt: " + r.BlockList(r.SealedBlocks));
-            sb.AppendLine("Pruefsummen vorher: " + r.ChecksumsOkBefore + "/" +
+            sb.AppendLine("Written: " + r.BlockList(r.Targets) +
+                          " (" + length + " bytes from 0x" + address.ToString("X5") + " as source)");
+            sb.AppendLine("Changed: " + r.BlockList(r.ChangedBlocks));
+            sb.AppendLine("Resealed: " + r.BlockList(r.SealedBlocks));
+            sb.AppendLine("Checksums before: " + r.ChecksumsOkBefore + "/" +
                           EDC15VM256Checksum.BlockCount);
-            sb.AppendLine("Pruefsummen nachher: " + r.ChecksumsOkAfter + "/" +
+            sb.AppendLine("Checksums after: " + r.ChecksumsOkAfter + "/" +
                           EDC15VM256Checksum.BlockCount);
             if (r.BlocksWithoutSymbol != null && r.BlocksWithoutSymbol.Length > 0)
             {
-                sb.AppendLine("Hinweis: in " + r.BlockList(r.BlocksWithoutSymbol) +
-                              " liegt an diesem Offset kein gleich langes Kennfeld.");
+                sb.AppendLine("Note: there is no map of the same length at this offset in " +
+                              r.BlockList(r.BlocksWithoutSymbol) + ".");
             }
             if (r.ChecksumsOkAfter < EDC15VM256Checksum.BlockCount)
             {
-                sb.AppendLine("Achtung: nicht versiegelte Bloecke waren schon vor dem " +
-                              "Schreiben fehlerhaft und bleiben unveraendert.");
+                sb.AppendLine("Warning: blocks that were not resealed were already faulty " +
+                              "before the write and stay unchanged.");
             }
             return sb.ToString().TrimEnd();
         }

@@ -297,7 +297,7 @@ internal static class TargetBlockTest
         TargetBlockWriteResult plan = TargetBlockWriter.Plan(currentFile, 0x20000, 16, 0x07,
             new BlockSymbolProbe(AlwaysTrue));
         Check(plan.Refused, "Plan abgelehnt");
-        Check(plan.Refusal.Contains("Code-Region"), "Begruendung nennt die Code-Region: " + plan.Refusal);
+        Check(plan.Refusal.Contains("code region"), "reason names the code region: " + plan.Refusal);
 
         // nothing may be written even on a direct Execute
         TargetBlockWriteResult r = TargetBlockWriter.Execute(plan, currentFile, 0x20000, 16,
@@ -316,7 +316,7 @@ internal static class TargetBlockTest
         TargetBlockWriteResult plan = TargetBlockWriter.Plan(currentFile, 0x400, 8, 0x02,
             new BlockSymbolProbe(AlwaysTrue));
         Check(plan.Refused, "Plan abgelehnt");
-        Check(plan.Refusal.Contains("reservierten Bereich"), "Begruendung: " + plan.Refusal);
+        Check(plan.Refusal.Contains("reserved area"), "reason: " + plan.Refusal);
     }
 
     private static void TestFieldOverflowRefused(string reference)

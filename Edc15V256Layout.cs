@@ -165,27 +165,27 @@ namespace VAGSuite
         {
             if (IsCodeAddress(address))
             {
-                return "0x" + address.ToString("X5") + " liegt in der Code-Region (0x10000-0x37FFF).";
+                return "0x" + address.ToString("X5") + " lies in the code region (0x10000-0x37FFF).";
             }
             int block = BlockOf(address);
             if (block == 0)
             {
-                return "0x" + address.ToString("X5") + " liegt in keinem der drei Datenbloecke.";
+                return "0x" + address.ToString("X5") + " lies in none of the three data blocks.";
             }
             int local = RelativeOffset(address);
             if (local < DataStart)
             {
-                return "0x" + address.ToString("X5") + " liegt im reservierten Bereich von " +
-                       BlockNames[block - 1] + " (vor 0x+" + DataStart.ToString("X") + ").";
+                return "0x" + address.ToString("X5") + " lies in the reserved area of " +
+                       BlockNames[block - 1] + " (before 0x+" + DataStart.ToString("X") + ").";
             }
             if ((long)local + length > FieldOffsetInBlock)
             {
                 return "0x" + address.ToString("X5") + " + " + length +
-                       " Byte ueberschreitet das Blockende von " + BlockNames[block - 1] + ".";
+                       " bytes exceed the end of " + BlockNames[block - 1] + ".";
             }
             if (length <= 0)
             {
-                return "Laenge muss groesser als 0 sein.";
+                return "Length must be greater than 0.";
             }
             return string.Empty;
         }
@@ -196,7 +196,7 @@ namespace VAGSuite
 
         /// <summary>
         /// Block numbers from a selection mask (bit 0 = block 1, bit 1 = block 2,
-        /// bit 2 = block 3).  Mask 0 means "keine Auswahl" and returns an
+        /// bit 2 = block 3).  Mask 0 means "no selection" and returns an
         /// empty list - the caller then decides in favour of the source block.
         /// </summary>
         public static int[] BlocksFromMask(int mask)
@@ -225,12 +225,12 @@ namespace VAGSuite
             return mask;
         }
 
-        /// <summary>"Block 1 + Block 3" or "keine Auswahl".</summary>
+        /// <summary>"Block 1 + Block 3" or "no selection".</summary>
         public static string DescribeMask(int mask)
         {
             int[] blocks = BlocksFromMask(mask);
-            if (blocks.Length == 0) return "keine Auswahl";
-            if (blocks.Length == 3) return "alle drei Bloecke";
+            if (blocks.Length == 0) return "no selection";
+            if (blocks.Length == 3) return "all three blocks";
             System.Text.StringBuilder sb = new System.Text.StringBuilder();
             foreach (int b in blocks)
             {

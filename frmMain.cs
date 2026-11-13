@@ -117,7 +117,12 @@ namespace VAGSuite
         private msiupdater m_msiUpdater;
         public DelegateStartReleaseNotePanel m_DelegateStartReleaseNotePanel;
         private frmSplash splash;
-        private DevExpress.XtraBars.BarButtonItem btnTargetBlocks;
+        private DevExpress.XtraBars.Ribbon.RibbonPageGroup rbnPageGroupTargetBlocks;
+        private DevExpress.XtraBars.BarCheckItem cbTargetBlockAll;
+        private DevExpress.XtraBars.BarCheckItem cbTargetBlock1;
+        private DevExpress.XtraBars.BarCheckItem cbTargetBlock2;
+        private DevExpress.XtraBars.BarCheckItem cbTargetBlock3;
+        private bool m_updatingTargetBlocks;
         public frmMain()
         {
             try
@@ -932,24 +937,39 @@ namespace VAGSuite
 
         
 
-        #region Zielblock-Auswahl (256-KB-EDC15V-5)
+        #region Target block selection (256 KB EDC15V-5)
 
         /// <summary>
-        /// Creates the menu item "Zielblock" in the group "General".  The
-        /// entry is created at runtime so that the large designer file
-        /// stays unchanged.
+        /// Creates the ribbon group "Target block" on the File page, directly
+        /// after the "Projects" group: "All blocks" plus one check item per
+        /// data block.  The group is created at runtime so that the large
+        /// designer file stays unchanged.
         /// </summary>
         private void InitTargetBlockUi()
         {
             try
             {
-                btnTargetBlocks = new DevExpress.XtraBars.BarButtonItem();
-                btnTargetBlocks.Caption = "Zielblock";
-                btnTargetBlocks.Hint = "Zielbloecke fuer Map-Aenderungen waehlen (Block 1/2/3/alle)";
-                btnTargetBlocks.Id = 200;
-                btnTargetBlocks.ItemClick += new DevExpress.XtraBars.ItemClickEventHandler(btnTargetBlocks_ItemClick);
-                ribbonControl1.Items.Add(btnTargetBlocks);
-                ribpgGeneralActions.ItemLinks.Add(btnTargetBlocks);
+                rbnPageGroupTargetBlocks = new DevExpress.XtraBars.Ribbon.RibbonPageGroup();
+                rbnPageGroupTargetBlocks.Name = "rbnPageGroupTargetBlocks";
+                rbnPageGroupTargetBlocks.Text = "Target block";
+                rbnPageGroupTargetBlocks.AllowTextClipping = false;
+
+                cbTargetBlockAll = new DevExpress.XtraBars.BarCheckItem();
+                cbTargetBlockAll.Caption = "All blocks";
+                cbTargetBlockAll.Hint = "Write map changes into block 1, 2 and 3 - all three checksums are resealed";
+                cbTargetBlockAll.Id = 200;
+                cbTargetBlockAll.Name = "cbTargetBlockAll";
+                cbTargetBlockAll.CheckedChanged += new DevExpress.XtraBars.ItemClickEventHandler(TargetBlockAll_CheckedChanged);
+                ribbonControl1.Items.Add(cbTargetBlockAll);
+                rbnPageGroupTargetBlocks.ItemLinks.Add(cbTargetBlockAll, true);
+
+                cbTargetBlock1 = CreateTargetBlockItem(1, true);
+                cbTargetBlock2 = CreateTargetBlockItem(2, false);
+                cbTargetBlock3 = CreateTargetBlockItem(3, false);
+
+                // Append: the "Projects" group is the last one on the File page,
+                // so the new group sits right next to it.
+                ribFile.Groups.Add(rbnPageGroupTargetBlocks);
             }
             catch (Exception ex)
             {
@@ -957,44 +977,123 @@ namespace VAGSuite
             }
         }
 
-        private void btnTargetBlocks_ItemClick(object sender, DevExpress.XtraBars.ItemClickEventArgs e)
+        private DevExpress.XtraBars.BarCheckItem CreateTargetBlockItem(int block, bool beginGroup)
         {
+            DevExpress.XtraBars.BarCheckItem item = new DevExpress.XtraBars.BarCheckItem();
+            item.Caption = Edc15V256Layout.BlockNames[block - 1];
+            item.Hint = "Write map changes into " + Edc15V256Layout.BlockNames[block - 1] +
+                        " (" + Edc15V256Layout.BlockRanges[block - 1] + ") at the same relative offset";
+            item.Id = 200 + block;
+            item.Name = "cbTargetBlock" + block.ToString();
+            item.CheckedChanged += new DevExpress.XtraBars.ItemClickEventHandler(TargetBlockItem_CheckedChanged);
+            ribbonControl1.Items.Add(item);
+            rbnPageGroupTargetBlocks.ItemLinks.Add(item, beginGroup);
+            return item;
+        }
+
+        /// <summary>Selection as bit mask (bit 0 = block 1); 0 = source block only.</summary>
+        private int SelectedTargetBlockMask()
+        {
+            int mask = 0;
+            if (cbTargetBlock1 != null && cbTargetBlock1.Checked) mask |= 1;
+            if (cbTargetBlock2 != null && cbTargetBlock2.Checked) mask |= 2;
+            if (cbTargetBlock3 != null && cbTargetBlock3.Checked) mask |= 4;
+            return mask & Edc15V256Layout.MaskAll;
+        }
+
+        private void TargetBlockItem_CheckedChanged(object sender, DevExpress.XtraBars.ItemClickEventArgs e)
+        {
+            if (m_updatingTargetBlocks) return;
+            int mask = SelectedTargetBlockMask();
+            SetTargetBlockAllFlag(mask == Edc15V256Layout.MaskAll);
+            if (!ConfirmAllBlocks(mask))
+            {
+                SyncTargetBlockItems();
+                return;
+            }
+            PersistTargetBlockMask(mask);
+        }
+
+        private void TargetBlockAll_CheckedChanged(object sender, DevExpress.XtraBars.ItemClickEventArgs e)
+        {
+            if (m_updatingTargetBlocks) return;
+
+            bool all = cbTargetBlockAll.Checked;
+            m_updatingTargetBlocks = true;
+            try
+            {
+                cbTargetBlock1.Checked = all;
+                cbTargetBlock2.Checked = all;
+                cbTargetBlock3.Checked = all;
+            }
+            finally
+            {
+                m_updatingTargetBlocks = false;
+            }
+
+            int mask = SelectedTargetBlockMask();
+            if (!ConfirmAllBlocks(mask))
+            {
+                SyncTargetBlockItems();
+                return;
+            }
+            PersistTargetBlockMask(mask);
+        }
+
+        private void SetTargetBlockAllFlag(bool all)
+        {
+            m_updatingTargetBlocks = true;
+            try
+            {
+                cbTargetBlockAll.Checked = all;
+            }
+            finally
+            {
+                m_updatingTargetBlocks = false;
+            }
+        }
+
+        /// <summary>
+        /// Selecting all three blocks overwrites every data block, so it asks
+        /// once.  Returns false when the user declines.
+        /// </summary>
+        private bool ConfirmAllBlocks(int mask)
+        {
+            if (mask != Edc15V256Layout.MaskAll) return true;
+            DialogResult answer = MessageBox.Show(this,
+                "All three data blocks will be written.\r\n\r\n" +
+                "The same relative offset is written into block 1 (0x38000), " +
+                "block 2 (0x00000) and block 3 (0x08000), and all three checksum " +
+                "fields are resealed.\r\n\r\nContinue?",
+                "Target block: all three blocks",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+            return answer == DialogResult.Yes;
+        }
+
+        private void PersistTargetBlockMask(int mask)
+        {
+            if (m_appSettings != null)
+            {
+                m_appSettings.TargetBlockMask = mask;
+            }
+        }
+
+        /// <summary>Brings the check items in line with the persisted mask.</summary>
+        private void SyncTargetBlockItems()
+        {
+            if (cbTargetBlock1 == null) return;
             int mask = (m_appSettings != null) ? m_appSettings.TargetBlockMask : 0;
-            using (frmTargetBlocks dlg = new frmTargetBlocks(mask))
+            m_updatingTargetBlocks = true;
+            try
             {
-                if (dlg.ShowDialog(this) == DialogResult.OK)
-                {
-                    if (m_appSettings != null)
-                    {
-                        m_appSettings.TargetBlockMask = dlg.SelectedMask;
-                    }
-                    UpdateTargetBlockCaption(dlg.SelectedMask);
-                }
+                cbTargetBlock1.Checked = (mask & 1) != 0;
+                cbTargetBlock2.Checked = (mask & 2) != 0;
+                cbTargetBlock3.Checked = (mask & 4) != 0;
+                cbTargetBlockAll.Checked = (mask & Edc15V256Layout.MaskAll) == Edc15V256Layout.MaskAll;
             }
-        }
-
-        private void UpdateTargetBlockCaption()
-        {
-            UpdateTargetBlockCaption(m_appSettings != null ? m_appSettings.TargetBlockMask : 0);
-        }
-
-        private void UpdateTargetBlockCaption(int mask)
-        {
-            if (btnTargetBlocks == null) return;
-            int[] blocks = Edc15V256Layout.BlocksFromMask(mask);
-            if (blocks.Length == 0)
+            finally
             {
-                btnTargetBlocks.Caption = "Zielblock: Quelle";
-            }
-            else
-            {
-                string text = string.Empty;
-                foreach (int b in blocks)
-                {
-                    if (text.Length > 0) text += "+";
-                    text += b.ToString();
-                }
-                btnTargetBlocks.Caption = "Zielblock: " + text;
+                m_updatingTargetBlocks = false;
             }
         }
 
@@ -1048,11 +1147,11 @@ namespace VAGSuite
                         if (len == Edc15V256Layout.ImageSize)
                         {
                             new frmInfoBox(
-                                "Die Zielblock-Auswahl (" + Edc15V256Layout.DescribeMask(mask) + ") " +
-                                "greift fuer diese Datei nicht.\r\n\r\n" +
-                                "Sie ist 256 KB gross, traegt aber nicht das Markerpaar der " +
-                                "EDC15V-5-Familie an allen drei Blockenden. Es wird wie bisher " +
-                                "nur der Block beschrieben, aus dem die Map geladen wurde.");
+                                "The target-block selection (" + Edc15V256Layout.DescribeMask(mask) + ") " +
+                                "does not apply to this file.\r\n\r\n" +
+                                "It is 256 KB in size but does not carry the marker pair of the " +
+                                "EDC15V-5 family at all three block ends. As before, only the block " +
+                                "the map was loaded from will be written.");
                         }
                     }
                     catch (Exception)
@@ -1067,7 +1166,7 @@ namespace VAGSuite
 
             if (plan.Refused)
             {
-                new frmInfoBox("Schreibvorgang abgelehnt.\r\n\r\n" + plan.Refusal);
+                new frmInfoBox("Write refused.\r\n\r\n" + plan.Refusal);
                 return true;
             }
 
@@ -1080,11 +1179,10 @@ namespace VAGSuite
                     text += Edc15V256Layout.BlockNames[b - 1];
                 }
                 DialogResult answer = MessageBox.Show(
-                    "In " + text + " liegt an Offset 0x" +
-                    Edc15V256Layout.RelativeOffset(address).ToString("X4") +
-                    " kein Kennfeld mit " + length + " Byte.\r\n\r\n" +
-                    "Trotzdem dorthin schreiben?",
-                    "Zielblock ohne passendes Kennfeld",
+                    "At offset 0x" + Edc15V256Layout.RelativeOffset(address).ToString("X4") +
+                    " there is no map of " + length + " bytes in " + text + ".\r\n\r\n" +
+                    "Write there anyway?",
+                    "Target block without a matching map",
                     MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
                 if (answer != DialogResult.Yes)
                 {
@@ -1101,7 +1199,7 @@ namespace VAGSuite
             TargetBlockWriteResult result = TargetBlockWriter.Execute(plan, fileName, address, length, data, writer);
 
             UpdateRollbackForwardControls();
-            UpdateTargetBlockCaption();
+            SyncTargetBlockItems();
 
             if (result.Ok)
             {
@@ -1114,7 +1212,7 @@ namespace VAGSuite
             }
 
             string caption = (result.SealedBlocks != null && result.SealedBlocks.Length == 3)
-                ? "Zielblock: alle drei Bloecke" : "Zielblock-Schreibvorgang";
+                ? "Target block: all three blocks" : "Target block write";
             string report = caption + "\r\n\r\n" + result.Message;
             if (!result.Ok && !string.IsNullOrEmpty(result.Refusal))
             {
@@ -2315,7 +2413,7 @@ namespace VAGSuite
             }
             InitSkins();
             LoadLayoutFiles();
-            UpdateTargetBlockCaption();
+            SyncTargetBlockItems();
             
             if (m_appSettings.DebugMode)
             {
