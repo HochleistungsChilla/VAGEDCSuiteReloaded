@@ -1,0 +1,5 @@
+# NuGet packages are restored from the pinned versions; do not commit binaries.
+*.dll
+*.exe
+lib/
+evidence/

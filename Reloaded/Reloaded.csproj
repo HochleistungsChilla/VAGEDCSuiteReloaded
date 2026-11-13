@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!--
+    Minimal WinForms sample targeting the .NET Framework 4.0, using the free
+    Krypton Toolkit (ribbon) and OxyPlot (chart) instead of DevExpress.
+
+    Built under Wine with the in-box .NET 4.0 C# compiler:
+        wine "C:\windows\Microsoft.NET\Framework\v4.0.30319\csc.exe" ...
+    See build.sh for the exact command; this project file is the equivalent
+    MSBuild description (kept for reference / future MSBuild-based builds).
+  -->
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{11111111-2222-3333-4444-555555555555}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>Reloaded</RootNamespace>
+    <AssemblyName>Reloaded</AssemblyName>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <LangVersion>default</LangVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="Krypton.Toolkit">
+      <HintPath>lib\Krypton.Toolkit.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Krypton.Ribbon">
+      <HintPath>lib\Krypton.Ribbon.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="OxyPlot">
+      <HintPath>lib\OxyPlot.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="OxyPlot.WindowsForms">
+      <HintPath>lib\OxyPlot.WindowsForms.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Main.cs" />
+  </ItemGroup>
+</Project>
