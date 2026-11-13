@@ -180,3 +180,6 @@ obj/
 
 # label data is generated locally from vendor exports
 *.labels
+
+# release archives
+dist/
