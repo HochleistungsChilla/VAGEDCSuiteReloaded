@@ -168,7 +168,7 @@ namespace Reloaded
         private static string FindVagPartNumber(byte[] image)
         {
             string ascii = Encoding.GetEncoding(28591).GetString(image);
-            Match match = Regex.Match(ascii, @"03[0-9]{7}[A-Z]");
+            Match match = Regex.Match(ascii, @"03[0-9]{7}[A-Z]{1,2}");
             return match.Success ? match.Value : string.Empty;
         }
     }
