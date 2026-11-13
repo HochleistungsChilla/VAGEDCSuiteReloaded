@@ -228,9 +228,15 @@ namespace VAGSuite
         }
         private SymbolHelper GetSymbolLike(SymbolCollection sc, string symbolname, int codeblock)
         {
+            bool byBlock = codeblock > 0 && IsEdc15V256K();
             foreach (SymbolHelper sh in sc)
             {
-                if (sh.Varname.StartsWith(symbolname) && sh.CodeBlock == codeblock)
+                if (!sh.Varname.StartsWith(symbolname)) continue;
+                if (byBlock)
+                {
+                    if (Edc15V256Layout.BlockOf((int)sh.Flash_start_address) == codeblock) return sh;
+                }
+                else if (sh.CodeBlock == codeblock)
                 {
                     return sh;
                 }
@@ -345,27 +351,40 @@ namespace VAGSuite
 
         }
 
+        /// <summary>
+        /// True when the open file is a 256 KB EDC15V-5 image.  Those files have
+        /// no code block table the parser could read, so the bank list comes
+        /// from the layout instead (block 1 automatic, 2 manual, 3 4x4).
+        /// </summary>
+        private bool IsEdc15V256K()
+        {
+            try
+            {
+                return !string.IsNullOrEmpty(m_currentfile) && Tools.Instance.IsEdc15V256KImage(m_currentfile);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         private void FillComboBoxBankSelection()
         {
+            if (IsEdc15V256K())
+            {
+                AddBankItem("Block 1 (Automatic)");
+                AddBankItem("Block 2 (Manual, FWD)");
+                AddBankItem("Block 3 (4x4)");
+                return;
+            }
+
             if (Tools.Instance.codeBlockList != null)
             {
                 foreach (CodeBlock cb in Tools.Instance.codeBlockList)
                 {
                     try
                     {
-                        bool found = false;
-                        foreach (string cbi in comboBoxEdit1.Properties.Items)
-                        {
-                            if (cbi == "Codebank " + cb.CodeID.ToString())
-                            {
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found)
-                        {
-                            comboBoxEdit1.Properties.Items.Add("Codebank " + cb.CodeID.ToString());
-                        }
+                        AddBankItem("Codebank " + cb.CodeID.ToString());
                     }
                     catch (Exception)
                     {
@@ -373,6 +392,16 @@ namespace VAGSuite
                     }
                 }
             }
+        }
+
+        private void AddBankItem(string text)
+        {
+            if (text == null || text.Length == 0) return;
+            foreach (string existing in comboBoxEdit1.Properties.Items)
+            {
+                if (existing == text) return;
+            }
+            comboBoxEdit1.Properties.Items.Add(text);
         }
 
         private bool SymbolExists(string symbolname)
@@ -1309,16 +1338,19 @@ namespace VAGSuite
 
         private int ExtractSelectedBank(string itemtext)
         {
-            int retval = 0;
+            if (string.IsNullOrEmpty(itemtext)) return 0;
             try
             {
-                retval = Convert.ToInt32(itemtext.Replace("Codebank ", ""));
+                if (itemtext.StartsWith("Block "))
+                {
+                    return Convert.ToInt32(itemtext.Substring(6, 1));
+                }
+                return Convert.ToInt32(itemtext.Replace("Codebank ", ""));
             }
             catch (Exception)
             {
-
+                return 0;
             }
-            return retval;
         }
     }
 }
