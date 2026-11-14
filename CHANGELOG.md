@@ -8,6 +8,36 @@ splash screen and the About box. Change it with `tools/bump-version.py`, which
 also keeps this file in step. A release is a commit plus an annotated git tag
 `vX.Y.Z`.
 
+## [Unreleased]
+
+DevExpress-free **Reloaded UI** (new `Reloaded/` project, branch `reloaded-ui`):
+a clean-room rewrite of the main window targeting .NET Framework 4.0 so it runs
+on Windows XP SP3 through Windows 11 and under Wine. The old DevExpress app
+stays on `master` until feature parity.
+
+### Added
+
+- Reloaded app shell: Krypton ribbon (File / View / Help) with generated GDI+
+  icons, collapse-to-tab-strip, and a Krypton-based dark + light theme
+  (`Reloaded/Theming.cs`, `Reloaded/Main.cs`).
+- Map list: the EDC15V parser is wired in (`MapList.GetMaps`) and shown as a
+  Category -> Subcategory -> map tree with the block table + checksum behind a
+  Views toggle.
+- Map viewer: OxyPlot 1.0.0 heatmap (`MapViewForm`) rendering a selected
+  Kennfeld, decoded byte-for-byte with the same logic as the old
+  `MapViewerEx.ShowTable` / `readdatafromfile` path.
+- Hex viewer: dependency-free GDI+ control (`HexViewerControl`) with offset,
+  hex and ASCII columns, wheel scroll and click selection.
+- i18n: locale files (`en.json`/`de.json`) + `I18n.T()` + a runtime
+  English/Deutsch dropdown, persisted under HKCU (no resx).
+- Reproducible Wine build for the Reloaded app (`Reloaded/build.sh`) and the
+  parser closure, including a top-level `VAGSuite.AxisIdent` decoupled from
+  the DevExpress `MapViewerEx` control.
+- Smoke-tested natively on Windows XP SP3 with .NET Framework 4.0 (qemu/KVM
+  setup documented outside the repo).
+
+[2.0.0]: https://github.com/HochleistungsChilla/VAGEDCSuiteReloaded/releases/tag/v2.0.0
+
 ## [2.0.0] - 2026-11-13
 
 First public release of the Reloaded fork. Upstream stopped at 1.3.5 (2013).
