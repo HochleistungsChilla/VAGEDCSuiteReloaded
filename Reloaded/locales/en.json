@@ -37,6 +37,19 @@
   "report_not_256kb": "Not a 256 KB EDC15V-5 image.",
   "info_read_error": "Could not read file: {0}",
 
+  "status_no_file": "No file loaded",
+  "status_read_error": "{0} | could not read file",
+  "status_checksum_ok": "Checksum Ok.",
+  "status_checksum_partial": "Checksum {0}/{1} fields OK",
+  "status_checksum_na": "Checksum n/a",
+  "status_bar": "{0} | {1} | {2} | {3} symbols",
+
+  "tree_category": "Category: {0} ({1})",
+  "tree_subcategory": "Subcategory: {0} ({1})",
+  "tree_map": "{0} @0x{1:X} ({2}x{3})",
+  "tree_unknown_category": "Unknown maps",
+  "tree_unknown_subcategory": "Unknown",
+
   "block": "Block",
   "address_range": "Address range",
   "gearbox": "Gearbox",

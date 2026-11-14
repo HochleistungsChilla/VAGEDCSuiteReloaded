@@ -52,9 +52,12 @@ namespace Reloaded
         private readonly KryptonRibbonGroupButton _germanButton;
         private readonly Panel _hexPanel;
         private readonly HexViewerControl _hex;
+        private readonly StatusStrip _statusStrip;
+        private readonly ToolStripStatusLabel _statusLabel;
         private readonly string _initialFile;
         private KryptonDataGridView _grid;
-        private KryptonDataGridView _mapGrid;
+        private TreeView _mapTree;
+        private KryptonPalette _activePalette;
 
         // Last successfully requested path; re-inspected after a language
         // switch so the dynamic texts (info strip, grid rows, report) are
@@ -118,7 +121,7 @@ namespace Reloaded
             {
                 ButtonType = GroupButtonType.Check
             };
-            _mapsButton.Click += (s, e) => ShowMapsGrid(_mapsButton.Checked);
+            _mapsButton.Click += (s, e) => ShowMapsView(_mapsButton.Checked);
             KryptonRibbonGroupTriple viewsTriple = new KryptonRibbonGroupTriple();
             viewsTriple.Items.Add(_hexButton);
             viewsTriple.Items.Add(_mapsButton);
@@ -205,15 +208,39 @@ namespace Reloaded
             };
             _hexPanel.Controls.Add(_hex);
 
-            // The block and map grids are created in OnShown (see below);
+            // --- status bar ---------------------------------------------------
+            // Plain WinForms StatusStrip (there is no Krypton tree either);
+            // its surface and text are pinned to the active palette in
+            // ApplyPalette, the same way the hex panel is themed.
+            _statusLabel = new ToolStripStatusLabel
+            {
+                Spring = true,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Text = I18n.T("status_no_file")
+            };
+            _statusStrip = new StatusStrip
+            {
+                Dock = DockStyle.Bottom,
+                SizingGrip = false,
+                ShowItemToolTips = false,
+                // The system renderer honours BackColor; the default
+                // professional renderer paints a gradient over it.
+                RenderMode = ToolStripRenderMode.System
+            };
+            _statusStrip.Items.Add(_statusLabel);
+
+            // The block grid and the map tree are created in OnShown (see below);
             // KryptonDataGridView measures itself in its constructor and needs
             // a window handle that wine-mono cannot create before the message
             // loop runs.
 
             // Add order gives the desired dock priority (later index docks
-            // first): ribbon, info strip, report, hex panel, then the Fill grid.
+            // first): ribbon, info strip, status strip, report, hex panel,
+            // then the Fill grid.  The status strip is added after the report
+            // so it owns the very bottom edge and the report sits above it.
             Controls.Add(_hexPanel);
             Controls.Add(_report);
+            Controls.Add(_statusStrip);
             Controls.Add(_infoLabel);
             Controls.Add(_ribbon);
 
@@ -261,34 +288,33 @@ namespace Reloaded
             Controls.Add(_grid);
             Controls.SetChildIndex(_grid, 0);
 
-            // Map (Kennfeld) grid: same construction rules, hidden by default.
-            // It is the alternative Fill surface to the block grid; the
-            // View > Views > Maps check button swaps between them.
-            _mapGrid = new KryptonDataGridView
+            // Map (Kennfeld) tree: the alternative Fill surface to the block
+            // grid.  Krypton has no tree control, so this is a plain WinForms
+            // TreeView; its BackColor/ForeColor are pinned to the palette in
+            // ApplyPalette.  The View > Views > Maps check button swaps it
+            // with the block grid.
+            _mapTree = new TreeView
             {
                 Dock = DockStyle.Fill,
-                ReadOnly = true,
-                AllowUserToAddRows = false,
-                AllowUserToDeleteRows = false,
-                RowHeadersVisible = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                BorderStyle = BorderStyle.FixedSingle,
+                HideSelection = false,
+                ShowLines = true,
+                ShowPlusMinus = true,
+                ShowRootLines = true,
+                ShowNodeToolTips = true,
+                ItemHeight = 20,
                 Visible = false
             };
-            _mapGrid.Columns.Add("varname", "Varname");
-            _mapGrid.Columns.Add("description", "Description");
-            _mapGrid.Columns.Add("address", "Address");
-            _mapGrid.Columns.Add("length", "Length");
-            _mapGrid.Columns.Add("xlen", "XLen");
-            _mapGrid.Columns.Add("ylen", "YLen");
-            _mapGrid.Columns.Add("units", "Units");
-            _mapGrid.Columns.Add("category", "Category");
 
-            // Double-click a map row: open the OxyPlot heat-map viewer for it.
-            _mapGrid.CellDoubleClick += MapGrid_CellDoubleClick;
+            // Double-click a map leaf: open the OxyPlot heat-map viewer for it.
+            _mapTree.NodeMouseDoubleClick += MapTree_NodeMouseDoubleClick;
 
-            Controls.Add(_mapGrid);
-            Controls.SetChildIndex(_mapGrid, 0);
+            Controls.Add(_mapTree);
+            Controls.SetChildIndex(_mapTree, 0);
+
+            // The tree did not exist when the constructor applied the
+            // palette, so pin its colours now.
+            if (_activePalette != null) ApplyTreePalette(_activePalette);
 
             // Grid headers are localized; the grids did not exist when the
             // constructor ran ApplyTexts.
@@ -345,6 +371,7 @@ namespace Reloaded
             _languageGroup.TextLine2 = I18n.T("language_sub");
 
             _infoLabel.Text = I18n.T("info_open_binary");
+            if (_statusLabel != null) _statusLabel.Text = I18n.T("status_no_file");
 
             // Keep the check state in sync with the active language.
             bool english = string.Equals(I18n.CurrentLanguage, "en", StringComparison.OrdinalIgnoreCase);
@@ -394,12 +421,14 @@ namespace Reloaded
             _infoLabel.Palette = palette;
             _report.Palette = palette;
             if (_grid != null) _grid.Palette = palette;
-            if (_mapGrid != null) _mapGrid.Palette = palette;
+            _activePalette = palette;
 
             // The form's client background is drawn from its own StateCommon
             // redirect (BackStyle = FormMain).  Pin it directly to the palette
             // value so a transparent label on the form shows a dark surface.
             ApplyHexPalette(palette);
+            ApplyTreePalette(palette);
+            ApplyStatusPalette(palette);
 
             Color formBack = palette.GetBackColor1(PaletteBackStyle.FormMain, PaletteState.Normal);
             StateCommon.Back.Draw = InheritBool.True;
@@ -432,6 +461,56 @@ namespace Reloaded
         }
 
         /// <summary>
+        /// Matches the plain WinForms TreeView to the active palette.  The
+        /// TreeView is used instead of a Krypton grid because Krypton has no
+        /// tree control; BackColor/ForeColor are its theming hooks, exactly
+        /// like the hex panel.  The expand/collapse glyphs are drawn by the
+        /// OS and do not follow the palette (see LOOKMATCH.md).
+        /// </summary>
+        private void ApplyTreePalette(KryptonPalette palette)
+        {
+            if (_mapTree == null) return;
+            try
+            {
+                Color surface = palette.GetBackColor1(PaletteBackStyle.InputControlStandalone, PaletteState.Normal);
+                Color text = palette.GetContentShortTextColor1(PaletteContentStyle.InputControlStandalone, PaletteState.Normal);
+                if (surface.A == 255) _mapTree.BackColor = surface;
+                if (text.A == 255) _mapTree.ForeColor = text;
+            }
+            catch
+            {
+                // Keep SystemColors defaults (light surface).
+            }
+            _mapTree.Invalidate();
+        }
+
+        /// <summary>
+        /// Matches the status strip and its single label to the active
+        /// palette.  The status strip uses the form background and the
+        /// palette's label text colour so it also works in dark mode.
+        /// </summary>
+        private void ApplyStatusPalette(KryptonPalette palette)
+        {
+            if (_statusStrip == null) return;
+            try
+            {
+                Color surface = palette.GetBackColor1(PaletteBackStyle.FormMain, PaletteState.Normal);
+                Color text = palette.GetContentShortTextColor1(PaletteContentStyle.LabelNormalPanel, PaletteState.Normal);
+                if (surface.A == 255) _statusStrip.BackColor = surface;
+                if (text.A == 255)
+                {
+                    _statusLabel.ForeColor = text;
+                    _statusLabel.BackColor = surface;
+                }
+            }
+            catch
+            {
+                // Keep SystemColors defaults (light surface).
+            }
+            _statusStrip.Invalidate();
+        }
+
+        /// <summary>
         /// Shows or hides the docked hex viewer.  Hiding a docked control
         /// removes it from layout, so the Fill grid immediately reclaims the
         /// space.
@@ -443,35 +522,33 @@ namespace Reloaded
 
         /// <summary>
         /// Switches the Fill surface between the block grid (default) and the
-        /// map (Kennfeld) list.  The two grids are mutually exclusive: only
-        /// one is visible at a time, so each one gets the whole client area.
+        /// map (Kennfeld) tree.  They are mutually exclusive: only one is
+        /// visible at a time, so each one gets the whole client area.
         /// </summary>
-        private void ShowMapsGrid(bool visible)
+        private void ShowMapsView(bool visible)
         {
-            if (_grid == null || _mapGrid == null) return;
-            _mapGrid.Visible = visible;
+            if (_grid == null || _mapTree == null) return;
+            _mapTree.Visible = visible;
             _grid.Visible = !visible;
         }
 
         /// <summary>
-        /// Opens the Kennfeld viewer for the double-clicked map row.  The row's
-        /// first cell is the varname the viewer looks up in the parsed binary;
-        /// a parser or reader failure is reported in the report box instead of
-        /// breaking the UI.
+        /// Opens the Kennfeld viewer for the double-clicked map leaf.  The
+        /// node's Tag carries the <see cref="MapList.Map"/> record whose
+        /// Varname the viewer looks up in the parsed binary; a parser or
+        /// reader failure is reported in the report box instead of breaking
+        /// the UI.
         /// </summary>
-        private void MapGrid_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
+        private void MapTree_NodeMouseDoubleClick(object sender, TreeNodeMouseClickEventArgs e)
         {
             try
             {
-                if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
-                if (_mapGrid == null || _lastPath == null) return;
-                if (e.RowIndex >= _mapGrid.Rows.Count) return;
+                if (e.Node == null || _mapTree == null || _lastPath == null) return;
 
-                object value = _mapGrid.Rows[e.RowIndex].Cells[0].Value;
-                string varname = value == null ? null : value.ToString();
-                if (string.IsNullOrEmpty(varname)) return;
+                MapList.Map map = e.Node.Tag as MapList.Map;
+                if (map == null || string.IsNullOrEmpty(map.Varname)) return;
 
-                MapViewForm.ShowMap(_lastPath, varname, this);
+                MapViewForm.ShowMap(_lastPath, map.Varname, this);
             }
             catch (Exception ex)
             {
@@ -519,7 +596,12 @@ namespace Reloaded
             _lastPath = path;
 
             _grid.Rows.Clear();
-            if (_mapGrid != null) _mapGrid.Rows.Clear();
+            if (_mapTree != null)
+            {
+                _mapTree.BeginUpdate();
+                _mapTree.Nodes.Clear();
+                _mapTree.EndUpdate();
+            }
             _report.Clear();
 
             byte[] image;
@@ -530,6 +612,8 @@ namespace Reloaded
             catch (Exception ex)
             {
                 _infoLabel.Text = I18n.T("info_read_error", ex.Message);
+                if (_statusLabel != null)
+                    _statusLabel.Text = I18n.T("status_read_error", Path.GetFileName(path));
                 return;
             }
 
@@ -537,7 +621,40 @@ namespace Reloaded
             _hex.SetBytes(image);
             _hex.SetCurrentAddress(0);
 
-            string part = FindVagPartNumber(image);
+            // ECU identity, from the parser's extraction helpers.  A failure
+            // anywhere in this block keeps the current window title (the
+            // fallback required for unknown images).
+            string part = string.Empty;
+            string software = string.Empty;
+            string bosch = string.Empty;
+            string info = string.Empty;
+            bool identityRead = false;
+            try
+            {
+                EDC15VFileParser parser = new EDC15VFileParser();
+                part = parser.ExtractPartnumber(image) ?? string.Empty;
+                software = parser.ExtractSoftwareNumber(image) ?? string.Empty;
+                bosch = parser.ExtractBoschPartnumber(image) ?? string.Empty;
+                info = parser.ExtractInfo(image) ?? string.Empty;
+                identityRead = true;
+            }
+            catch
+            {
+                // Keep the title we already have; the regex fallback below
+                // still supplies a part number for the info strip.
+            }
+
+            if (string.IsNullOrEmpty(part)) part = FindVagPartNumber(image);
+
+            // The original VAGEDCSuite title bar carries the full ECU
+            // identity, not just the program name.
+            string identity = JoinParts(part, software, bosch, info);
+            if (identityRead)
+            {
+                string title = JoinParts(Path.GetFileName(path), part, software, bosch, info);
+                if (title.Length > 0) Text = title;
+            }
+
             _infoLabel.Text = I18n.T(
                 "info_file_format",
                 Path.GetFileName(path),
@@ -551,6 +668,7 @@ namespace Reloaded
             {
                 _infoLabel.Text += "   |   " + I18n.T("info_not_256kb");
                 _report.Text = I18n.T("report_not_256kb");
+                UpdateStatusBar(path, I18n.T("status_checksum_na"), identity, 0);
                 return;
             }
 
@@ -581,55 +699,188 @@ namespace Reloaded
             _report.AppendText("\r\n");
             _report.AppendText(EDC15VM256Checksum.Verify(image).Report);
 
-            // Map list (Kennfelder).  Only the real tables are shown: axes
-            // with a length of 1 are scalar labels, not maps.
-            FillMapGrid(path);
+            // Map list (Kennfelder), shown as a Category > Subcategory tree.
+            int mapCount = FillMapTree(path);
+
+            string checksum = okFields >= EDC15VM256Checksum.BlockCount
+                ? I18n.T("status_checksum_ok")
+                : I18n.T("status_checksum_partial", okFields, EDC15VM256Checksum.BlockCount);
+            UpdateStatusBar(path, checksum, identity, mapCount);
         }
 
         /// <summary>
-        /// Fills the map grid from <see cref="MapList.GetMaps"/> with the real
-        /// Kennfelder only (an axis longer than one cell), sorted by flash
-        /// address.  A parser failure leaves the grid empty and appends a
-        /// short note to the report instead of aborting the inspection.
+        /// Sets the single status-bar label in the original layout:
+        /// <c>file | checksum state | ECU identity | N symbols</c>.  All
+        /// fragments go through <see cref="I18n"/>.
         /// </summary>
-        private void FillMapGrid(string path)
+        private void UpdateStatusBar(string path, string checksum, string identity, int symbolCount)
         {
-            if (_mapGrid == null) return;
+            if (_statusLabel == null) return;
+            if (string.IsNullOrEmpty(identity)) identity = "?";
+            _statusLabel.Text = I18n.T(
+                "status_bar",
+                Path.GetFileName(path),
+                checksum,
+                identity,
+                symbolCount);
+        }
 
+        /// <summary>
+        /// Fills the map tree from <see cref="MapList.GetMaps"/>: category
+        /// nodes ("Detected maps (N)"), subcategory nodes ("Fuel (N)"), and
+        /// one leaf per map with its flash address.  Categories and
+        /// subcategories are sorted alphabetically, maps by address.  Each
+        /// leaf's Tag is its <see cref="MapList.Map"/> record, which keeps the
+        /// Varname the viewer needs.  A parser failure leaves the tree empty
+        /// and appends a short note to the report instead of aborting the
+        /// inspection.
+        /// </summary>
+        private int FillMapTree(string path)
+        {
+            if (_mapTree == null) return 0;
+
+            int count = 0;
+            _mapTree.BeginUpdate();
             try
             {
-                List<MapList.Map> all = MapList.GetMaps(path);
-                List<MapList.Map> real = new List<MapList.Map>();
-                for (int i = 0; i < all.Count; i++)
+                _mapTree.Nodes.Clear();
+
+                List<MapList.Map> maps = MapList.GetMaps(path);
+                Dictionary<string, Dictionary<string, List<MapList.Map>>> groups =
+                    new Dictionary<string, Dictionary<string, List<MapList.Map>>>();
+
+                for (int i = 0; i < maps.Count; i++)
                 {
-                    MapList.Map map = all[i];
+                    MapList.Map map = maps[i];
                     if (map == null) continue;
-                    if (map.XLen > 1 || map.YLen > 1) real.Add(map);
+                    // Only real tables: a symbol with both axes of length 1
+                    // is a scalar label, not a map (the label file adds 11k
+                    // of them).
+                    if (map.XLen <= 1 && map.YLen <= 1) continue;
+
+                    string category = GroupLabel(map.Category, I18n.T("tree_unknown_category"));
+                    string subcategory = GroupLabel(map.Subcategory, I18n.T("tree_unknown_subcategory"));
+
+                    Dictionary<string, List<MapList.Map>> subs;
+                    if (!groups.TryGetValue(category, out subs))
+                    {
+                        subs = new Dictionary<string, List<MapList.Map>>();
+                        groups[category] = subs;
+                    }
+
+                    List<MapList.Map> list;
+                    if (!subs.TryGetValue(subcategory, out list))
+                    {
+                        list = new List<MapList.Map>();
+                        subs[subcategory] = list;
+                    }
+
+                    list.Add(map);
+                    count++;
                 }
 
-                real.Sort(delegate(MapList.Map a, MapList.Map b)
-                {
-                    return a.Address.CompareTo(b.Address);
-                });
+                List<string> categories = new List<string>(groups.Keys);
+                categories.Sort(StringComparer.OrdinalIgnoreCase);
 
-                for (int i = 0; i < real.Count; i++)
+                for (int c = 0; c < categories.Count; c++)
                 {
-                    MapList.Map map = real[i];
-                    _mapGrid.Rows.Add(
-                        map.Varname,
-                        map.Description,
-                        "0x" + map.Address.ToString("X"),
-                        map.Length,
-                        map.XLen,
-                        map.YLen,
-                        map.XUnits,
-                        map.Category);
+                    Dictionary<string, List<MapList.Map>> subs = groups[categories[c]];
+                    int categoryCount = 0;
+                    foreach (List<MapList.Map> entries in subs.Values) categoryCount += entries.Count;
+
+                    TreeNode categoryNode = new TreeNode(
+                        I18n.T("tree_category", categories[c], categoryCount));
+                    _mapTree.Nodes.Add(categoryNode);
+
+                    List<string> subcategories = new List<string>(subs.Keys);
+                    subcategories.Sort(StringComparer.OrdinalIgnoreCase);
+
+                    for (int s = 0; s < subcategories.Count; s++)
+                    {
+                        List<MapList.Map> list = subs[subcategories[s]];
+                        list.Sort(delegate(MapList.Map a, MapList.Map b)
+                        {
+                            return a.Address.CompareTo(b.Address);
+                        });
+
+                        TreeNode subNode = new TreeNode(
+                            I18n.T("tree_subcategory", subcategories[s], list.Count));
+                        categoryNode.Nodes.Add(subNode);
+
+                        for (int m = 0; m < list.Count; m++)
+                        {
+                            MapList.Map map = list[m];
+                            // Prefer the map's own name: the label file's
+                            // descriptions are long paragraphs, not the short
+                            // captions the original tree showed.  The full
+                            // description stays reachable as a tooltip.
+                            string label = map.Varname;
+                            if (string.IsNullOrEmpty(label)) label = map.Description;
+                            if (string.IsNullOrEmpty(label)) label = "(?)";
+
+                            TreeNode leaf = new TreeNode(
+                                I18n.T("tree_map", label, map.Address, map.XLen, map.YLen));
+                            leaf.Tag = map;
+
+                            StringBuilder tip = new StringBuilder();
+                            if (!string.IsNullOrEmpty(map.Description))
+                                tip.Append(map.Description);
+                            if (map.CodeBlock > 0)
+                            {
+                                if (tip.Length > 0) tip.Append("\r\n");
+                                tip.Append("codeblock ").Append(map.CodeBlock);
+                            }
+                            leaf.ToolTipText = tip.ToString();
+
+                            subNode.Nodes.Add(leaf);
+                        }
+                    }
+                }
+
+                // Expand the first category and its first subcategory so the
+                // grouping is visible at a glance; everything else, including
+                // the large auto-detected groups, starts collapsed.
+                if (_mapTree.Nodes.Count > 0)
+                {
+                    TreeNode first = _mapTree.Nodes[0];
+                    first.Expand();
+                    if (first.Nodes.Count > 0) first.Nodes[0].Expand();
+                    _mapTree.SelectedNode = first;
                 }
             }
             catch (Exception ex)
             {
                 _report.AppendText("\r\nMaps: " + ex.Message + "\r\n");
             }
+            finally
+            {
+                _mapTree.EndUpdate();
+            }
+            return count;
+        }
+
+        /// <summary>Trims a parser category/subcategory, substituting a label for blanks.</summary>
+        private static string GroupLabel(string value, string fallback)
+        {
+            if (value == null) return fallback;
+            string trimmed = value.Trim();
+            return trimmed.Length == 0 ? fallback : trimmed;
+        }
+
+        /// <summary>Joins the non-empty parts with single spaces.</summary>
+        private static string JoinParts(params string[] parts)
+        {
+            StringBuilder builder = new StringBuilder();
+            for (int i = 0; i < parts.Length; i++)
+            {
+                string part = parts[i];
+                if (string.IsNullOrEmpty(part)) continue;
+                part = part.Trim();
+                if (part.Length == 0) continue;
+                if (builder.Length > 0) builder.Append(' ');
+                builder.Append(part);
+            }
+            return builder.ToString();
         }
 
         /// <summary>
