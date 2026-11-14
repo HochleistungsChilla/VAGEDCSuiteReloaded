@@ -284,6 +284,9 @@ namespace Reloaded
             _mapGrid.Columns.Add("units", "Units");
             _mapGrid.Columns.Add("category", "Category");
 
+            // Double-click a map row: open the OxyPlot heat-map viewer for it.
+            _mapGrid.CellDoubleClick += MapGrid_CellDoubleClick;
+
             Controls.Add(_mapGrid);
             Controls.SetChildIndex(_mapGrid, 0);
 
@@ -448,6 +451,32 @@ namespace Reloaded
             if (_grid == null || _mapGrid == null) return;
             _mapGrid.Visible = visible;
             _grid.Visible = !visible;
+        }
+
+        /// <summary>
+        /// Opens the Kennfeld viewer for the double-clicked map row.  The row's
+        /// first cell is the varname the viewer looks up in the parsed binary;
+        /// a parser or reader failure is reported in the report box instead of
+        /// breaking the UI.
+        /// </summary>
+        private void MapGrid_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
+        {
+            try
+            {
+                if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+                if (_mapGrid == null || _lastPath == null) return;
+                if (e.RowIndex >= _mapGrid.Rows.Count) return;
+
+                object value = _mapGrid.Rows[e.RowIndex].Cells[0].Value;
+                string varname = value == null ? null : value.ToString();
+                if (string.IsNullOrEmpty(varname)) return;
+
+                MapViewForm.ShowMap(_lastPath, varname, this);
+            }
+            catch (Exception ex)
+            {
+                _report.AppendText("\r\nMap view: " + ex.Message + "\r\n");
+            }
         }
 
         /// <summary>

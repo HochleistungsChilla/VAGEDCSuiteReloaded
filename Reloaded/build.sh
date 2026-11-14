@@ -78,7 +78,8 @@ wine "$CSC" /nologo /target:winexe /out:Reloaded.exe \
     Main.cs \
     Theming.cs \
     HexViewerControl.cs \
-    I18n.cs
+    I18n.cs \
+    MapViewForm.cs
 
 # Copy the private assemblies next to the .exe (the .NET Framework CLR, and
 # Mono's loader, probe the application base directory — the CopyLocal step an

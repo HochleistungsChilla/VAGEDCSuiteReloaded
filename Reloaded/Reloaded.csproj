@@ -62,6 +62,7 @@
     <Compile Include="HexViewerControl.cs" />
     <Compile Include="MapList.cs" />
     <Compile Include="I18n.cs" />
+    <Compile Include="MapViewForm.cs" />
     <Compile Include="..\Edc15V256Layout.cs">
       <Link>Edc15V256Layout.cs</Link>
     </Compile>
