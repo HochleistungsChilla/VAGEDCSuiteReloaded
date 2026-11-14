@@ -19,11 +19,16 @@
   "group_panels": "Bereiche",
   "view_hex": "Hex",
   "view_hex_viewer": "Betrachter",
+  "maps": "Karten",
+  "maps_sub": "Liste",
 
   "group_ribbon": "Menüband",
   "group_layout": "Anordnung",
   "ribbon_minimize": "Minimieren",
   "ribbon_sub": "Menüband",
+
+  "language": "Sprache",
+  "language_sub": "Optionen",
 
   "info_open_binary": "Öffnen Sie eine 256-KB-EDC15V-5-Binärdatei.",
   "info_file_format": "{0}   |   {1} Bytes (0x{1:X})   |   Teilenummer: {2}",

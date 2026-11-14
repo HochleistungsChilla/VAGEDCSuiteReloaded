@@ -61,6 +61,7 @@
     <Compile Include="Theming.cs" />
     <Compile Include="HexViewerControl.cs" />
     <Compile Include="MapList.cs" />
+    <Compile Include="I18n.cs" />
     <Compile Include="..\Edc15V256Layout.cs">
       <Link>Edc15V256Layout.cs</Link>
     </Compile>
@@ -165,5 +166,11 @@
     <EmbeddedResource Include="..\Labels\EDC15V-5_SG1623.labels">
       <Link>Labels\EDC15V-5_SG1623.labels</Link>
     </EmbeddedResource>
+    <Content Include="locales\en.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="locales\de.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 </Project>

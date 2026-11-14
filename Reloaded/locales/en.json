@@ -19,11 +19,16 @@
   "group_panels": "Panels",
   "view_hex": "Hex",
   "view_hex_viewer": "viewer",
+  "maps": "Maps",
+  "maps_sub": "list",
 
   "group_ribbon": "Ribbon",
   "group_layout": "Layout",
   "ribbon_minimize": "Minimize",
   "ribbon_sub": "ribbon",
+
+  "language": "Language",
+  "language_sub": "Options",
 
   "info_open_binary": "Open a 256 KB EDC15V-5 binary.",
   "info_file_format": "{0}   |   {1} bytes (0x{1:X})   |   part number: {2}",
