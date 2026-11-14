@@ -30,6 +30,7 @@ namespace Reloaded
         private readonly KryptonTextBox _report;
         private readonly KryptonRibbonGroupButton _lightButton;
         private readonly KryptonRibbonGroupButton _darkButton;
+        private readonly KryptonRibbonGroupButton _minimizeButton;
         private readonly string _initialFile;
         private KryptonDataGridView _grid;
 
@@ -47,6 +48,9 @@ namespace Reloaded
 
             // --- ribbon -------------------------------------------------------
             _ribbon = new KryptonRibbon { Dock = DockStyle.Top };
+            // Office-style minimize: double-click a tab (or the ribbon
+            // minimize button) collapses the ribbon to just the tab strip.
+            _ribbon.AllowMinimizedChange = true;
 
             // File tab: Open
             KryptonRibbonTab fileTab = new KryptonRibbonTab { Text = "File" };
@@ -93,8 +97,30 @@ namespace Reloaded
             themeGroup.Items.Add(themeTriple);
             viewTab.Groups.Add(themeGroup);
 
+            // View tab: Ribbon minimize (collapse to just the tab strip).
+            KryptonRibbonGroup ribbonGroup = new KryptonRibbonGroup
+            {
+                TextLine1 = "Ribbon",
+                TextLine2 = "Layout"
+            };
+            _minimizeButton = new KryptonRibbonGroupButton
+            {
+                TextLine1 = "Minimize",
+                TextLine2 = "ribbon",
+                ButtonType = GroupButtonType.Check
+            };
+            _minimizeButton.Click += (s, e) => _ribbon.MinimizedMode = _minimizeButton.Checked;
+            KryptonRibbonGroupTriple ribbonTriple = new KryptonRibbonGroupTriple();
+            ribbonTriple.Items.Add(_minimizeButton);
+            ribbonGroup.Items.Add(ribbonTriple);
+            viewTab.Groups.Add(ribbonGroup);
+
             _ribbon.RibbonTabs.Add(fileTab);
             _ribbon.RibbonTabs.Add(viewTab);
+
+            // Keep the button in sync when the ribbon is collapsed by
+            // double-clicking a tab (AllowMinimizedChange) as well.
+            _ribbon.MinimizedModeChanged += (s, e) => _minimizeButton.Checked = _ribbon.MinimizedMode;
 
             // --- info strip ---------------------------------------------------
             _infoLabel = new KryptonLabel
