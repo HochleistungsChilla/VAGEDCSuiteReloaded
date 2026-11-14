@@ -74,20 +74,24 @@ bosch    = parser.ExtractBoschPartnumber(image);
 info     = parser.ExtractInfo(image);
 ```
 
-and sets `Text` to
+then adds the make and ECU type from
+`partNumberConverter.ConvertPartnumber(bosch, image.Length)` (the same source
+`frmMain.DetectMaps` uses for its `barAdditionalInfo`), and sets `Text` to
 
 ```
-{filename} {partnumber} {software} {bosch} {info}
+{filename} {partnumber} {software} {bosch} {CarMake} {EcuType} {info}
 ```
 
-with empty fields omitted.  If the extraction block throws, the title is left
-untouched (the previous/window title stays).  Because `ChangeLanguage` calls
-`Inspect` again, the title survives a language switch.
+with empty fields omitted.  If the `Extract*` block throws, the title is left
+untouched (the previous/window title stays); if only the converter throws, the
+make/type fields stay empty and the title still carries the four extracted
+values.  Because `ChangeLanguage` calls `Inspect` again, the title survives a
+language switch.
 
 For `/tmp/ga-work/ga.stage1` the title is:
 
 ```
-ga.stage1 038906018P SG1623 0281001720 1,9l R4 EDC
+ga.stage1 038906018P SG1623 0281001720 Volkswagen EDC15V-5.29 1,9l R4 EDC
 ```
 
 ## 3. Status bar
@@ -97,7 +101,7 @@ pin to the palette) is docked at the very bottom, below the checksum report,
 with a single `ToolStripStatusLabel`:
 
 ```
-{filename} | Checksum Ok. | {partnumber} {software} {bosch} {info} | {N} symbols
+{filename} | Checksum Ok. | {partnumber} {software} {bosch} {CarMake} {EcuType} {info} | {N} symbols
 ```
 
 * `Checksum Ok.` comes from the already-computed
@@ -167,7 +171,7 @@ kept in `Reloaded/evidence/` (gitignored).
 | `lookmatch-tree-de-dark.png` | German: `Unterkategorie: Fuel (6)`, `Prüfsumme OK.`, `606 Symbole` |
 | `lookmatch-tree-light.png` | light theme: same tree, `Kategorie: Detected maps (393)` |
 | `lookmatch-hex-light.png` | Hex viewer still toggles with the tree and Maps toggle present |
-| `lookmatch-title-status-dark.png` | title `ga.stage1 038906018P SG1623 0281001720 1,9l R4 EDC` and status `ga.stage1 \| Checksum Ok. \| ... \| 606 symbols` |
+| `lookmatch-title-status-dark.png` | title `ga.stage1 038906018P SG1623 0281001720 Volkswagen EDC15V-5.29 1,9l R4 EDC` and status `ga.stage1 \| Checksum Ok. \| ... \| 606 symbols` |
 
 Checks performed with `xdotool` + screenshots:
 
@@ -186,11 +190,22 @@ Checks performed with `xdotool` + screenshots:
 
 ## 6. Caveats / known limits
 
-* **Title text differs from the screenshot detail.**  The four mandated
-  `Extract*` helpers return `1,9l R4 EDC` for the info field, not
-  `Volkswagen EDC15V-5.29.1,1 R4 EDC`.  The extra make/version prefix is not
-  produced by these helpers for this image, so the title contains what the
-  parser actually extracts.
+* **Where the original caption pieces come from (codegraph).**  In the
+  indexed `frmMain.DetectMaps` (`frmMain.cs:259`), the original status bars
+  are built as
+  `barPartnumber = partNo + " " + softwareNumber` and
+  `barAdditionalInfo = info.PartNumber + " " + info.CarMake + " " +
+  info.EcuType + " " + ExtractInfo(allBytes)`, with `info =
+  partNumberConverter.ConvertPartnumber(boschnumber, length)`.  Reloaded now
+  follows the same composition (the converter supplies `Volkswagen
+  EDC15V-5.29`).  The original `barSymCount` still counts raw
+  `newSymbols.Count` (all 11,980 symbols here), while Reloaded counts the 606
+  filtered map leaves it actually shows.
+* **The exact caption is slightly shorter than the screenshot.**  The
+  converter in this tree returns `EDC15V-5.29`, and `ExtractInfo` returns
+  `1,9l R4 EDC`; the screenshot shows `EDC15V-5.29.1,1 R4 EDC` (newer
+  converter/parser data, no space after the comma).  The wording and order
+  match, only the version suffix and punctuation differ.
 * **Counts differ from the original screenshot.**  For this image the
   compiled label resource yields 393 detected maps and 606 real map leaves
   (`606 symbols`), versus `Detected maps (69)` / `729 symbols` in the

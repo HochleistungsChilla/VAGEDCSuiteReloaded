@@ -1,70 +1,81 @@
 {
   "window_title": "VAGEDCSuite-Reloaded",
-
   "tab_file": "File",
   "tab_view": "View",
-
+  "tab_help": "Help",
   "group_file": "File",
   "group_image": "Image",
   "file_open": "Open",
   "file_open_binary": "binary",
-
+  "file_reload": "Reload",
+  "file_reload_sub": "image",
+  "file_close": "Close",
+  "file_close_sub": "image",
   "view_theme": "Theme",
   "view_appearance": "Appearance",
   "theme_light": "Light",
   "theme_dark": "Dark",
   "theme_sub": "theme",
-
   "group_views": "Views",
+  "group_map": "Map",
   "group_panels": "Panels",
   "view_hex": "Hex",
   "view_hex_viewer": "viewer",
   "maps": "Maps",
   "maps_sub": "list",
-
+  "map_open": "Show",
+  "map_open_sub": "heat map",
+  "map_close": "Close",
+  "map_close_sub": "viewer",
+  "views_blocks": "Blocks",
+  "views_blocks_sub": "checksum",
   "group_ribbon": "Ribbon",
   "group_layout": "Layout",
   "ribbon_minimize": "Minimize",
   "ribbon_sub": "ribbon",
-
   "language": "Language",
   "language_sub": "Options",
-
   "info_open_binary": "Open a 256 KB EDC15V-5 binary.",
   "info_file_format": "{0}   |   {1} bytes (0x{1:X})   |   part number: {2}",
   "part_number": "part number",
   "info_not_256kb": "not a 256 KB EDC15V-5 image (no known markers)",
   "report_not_256kb": "Not a 256 KB EDC15V-5 image.",
   "info_read_error": "Could not read file: {0}",
-
   "status_no_file": "No file loaded",
   "status_read_error": "{0} | could not read file",
   "status_checksum_ok": "Checksum Ok.",
   "status_checksum_partial": "Checksum {0}/{1} fields OK",
   "status_checksum_na": "Checksum n/a",
   "status_bar": "{0} | {1} | {2} | {3} symbols",
-
+  "status_symbols": "{0} symbols",
+  "status_blocks_tip": "Gearbox per block: {0}",
   "tree_category": "Category: {0} ({1})",
   "tree_subcategory": "Subcategory: {0} ({1})",
   "tree_map": "{0} @0x{1:X} ({2}x{3})",
   "tree_unknown_category": "Unknown maps",
   "tree_unknown_subcategory": "Unknown",
-
+  "tree_header": "Maps ({0})",
+  "tree_header_empty": "Maps",
+  "viewer_title": "Map viewer",
+  "viewer_title_map": "{0}   ·   0x{1:X}   ·   {2}x{3}",
+  "viewer_placeholder": "Select a map",
+  "viewer_hint": "Double-click a map in the tree to show its heat map here.",
   "block": "Block",
   "address_range": "Address range",
   "gearbox": "Gearbox",
   "code": "Code",
-
   "block_1": "Block 1",
   "block_2": "Block 2",
   "block_3": "Block 3",
-
   "gearbox_automatic": "Automatic",
   "gearbox_manual": "Manual",
   "gearbox_manual_fwd": "Manual, FWD",
   "gearbox_4x4": "4x4",
-
   "checksum_report": "Checksum: {0}/{1} fields OK",
-
-  "dialog_filter": "Binary images (*.bin)|*.bin|All files (*.*)|*.*"
+  "dialog_filter": "Binary images (*.bin)|*.bin|All files (*.*)|*.*",
+  "group_help": "Help",
+  "help_about": "About",
+  "help_about_sub": "version",
+  "about_title": "About VAGEDCSuite-Reloaded",
+  "about_text": "VAGEDCSuite-Reloaded - DevExpress-free WinForms rewrite.\n\nThe map tree, the checksum inspection and the Kennfeld heat map use the shared clean core. Built with Krypton Toolkit and OxyPlot."
 }
