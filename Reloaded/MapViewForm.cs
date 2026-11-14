@@ -28,8 +28,15 @@
 //   * LabelFontSize > 0 renders the whole plot black under wine-mono, so the
 //     cell labels stay off (LabelFontSize = 0).
 //   * HeatMapSeries.Data is indexed [x, y]: first dimension along the X axis.
-//   * The colour bar is a LinearColorAxis at AxisPosition.Right, Palette =
-//     OxyPalettes.Jet(n); its Min/Max are fed automatically from the data.
+//   * The colour bar is a LinearColorAxis at AxisPosition.Right; its Min/Max
+//     are fed automatically from the data.
+//
+// Visual style (see CHARTMATCH.md): the old DevExpress/Nevron map chart is a
+// white chart with thin black axes, black tick labels, no in-chart title and
+// no legend.  Its surface palette is the fixed five-anchor ramp
+// Green -> Yellow -> Orange -> OrangeRed -> Red (MapViewerEx.FillData), not a
+// rainbow/Jet ramp.  Everything below only styles the plot; the decoded
+// values stay untouched.
 //
 //---------------------------------------------------------------------------
 
@@ -56,6 +63,18 @@ namespace Reloaded
         // MapViewerEx treats every 16-bit value above this as negative
         // (b = 0x10000 - b; b = -b).  Kept identical on purpose.
         private const int SixteenBitSignThreshold = 0xF000;
+
+        // MapViewerEx.FillData's surface palette: five anchors at 0 / 25 / 50 /
+        // 75 / 100 % of the data range.  System.Drawing's named colours, as the
+        // old code passes them to Nevron.
+        private static readonly OxyColor[] MapPalette =
+        {
+            OxyColor.FromRgb(0, 128, 0),      // Color.Green
+            OxyColor.FromRgb(255, 255, 0),    // Color.Yellow
+            OxyColor.FromRgb(255, 165, 0),    // Color.Orange
+            OxyColor.FromRgb(255, 69, 0),     // Color.OrangeRed
+            OxyColor.FromRgb(255, 0, 0)       // Color.Red
+        };
 
         private readonly PlotView _plotView;
 
@@ -97,16 +116,17 @@ namespace Reloaded
             StartPosition = FormStartPosition.CenterParent;
             BackColor = Color.White;
 
-            string xTitle = string.IsNullOrEmpty(xAxisName) ? "X" : xAxisName;
-            if (!string.IsNullOrEmpty(xUnits)) xTitle = xTitle + " [" + xUnits + "]";
-            string yTitle = string.IsNullOrEmpty(yAxisName) ? "Y" : yAxisName;
-            if (!string.IsNullOrEmpty(yUnits)) yTitle = yTitle + " [" + yUnits + "]";
+            // The old table header shows the parsed axis description as-is
+            // ("X: IQ (mg/stroke) / Y: Engine speed (rpm)"); only add a unit
+            // when the description does not already name it.
+            string xTitle = AxisTitle(xAxisName, xUnits, "X");
+            string yTitle = AxisTitle(yAxisName, yUnits, "Y");
 
             _plotView = new PlotView
             {
                 Dock = DockStyle.Fill,
                 BackColor = Color.White,
-                Model = BuildModel(title, xTitle, yTitle, values, xValues, yValues)
+                Model = BuildModel(xTitle, yTitle, values, xValues, yValues)
             };
 
             // Footer: source facts, so a screenshot alone says which map and
@@ -143,9 +163,12 @@ namespace Reloaded
             Controls.Add(footer);
         }
 
-        /// <summary>OxyPlot wiring: heat map + Jet colour axis + two linear axes.</summary>
+        /// <summary>
+        /// OxyPlot wiring: heat map + colour axis + two linear axes, styled
+        /// like the original's map chart (white background, thin black axes,
+        /// black labels, green/yellow/orange/red ramp, no chart title).
+        /// </summary>
         private static PlotModel BuildModel(
-            string title,
             string xTitle,
             string yTitle,
             double[,] values,
@@ -157,31 +180,39 @@ namespace Reloaded
             AxisRange(yValues, out yMin, out yMax);
 
             // PlotModel has no constructor taking a title in OxyPlot 1.0.
-            PlotModel model = new PlotModel { Title = title };
+            // The old chart carries no in-chart title (the map name lives in
+            // the window/panel caption), so none is set here either.
+            PlotModel model = new PlotModel
+            {
+                Background = OxyColors.White,
+                PlotAreaBackground = OxyColors.White,
+                TextColor = OxyColors.Black,
+                TitleColor = OxyColors.Black,
+                // The original has only the left/bottom axis lines, no box.
+                PlotAreaBorderColor = OxyColors.Transparent,
+                // The old grid and chart used Tahoma 8.
+                DefaultFont = "Tahoma",
+                DefaultFontSize = 8
+            };
 
             LinearColorAxis colorAxis = new LinearColorAxis
             {
                 Key = "Values",
                 Position = AxisPosition.Right,
-                Palette = OxyPalettes.Jet(256)
+                Palette = OxyPalette.Interpolate(256, MapPalette),
+                AxislineColor = OxyColors.Black,
+                TicklineColor = OxyColors.Black,
+                TextColor = OxyColors.Black,
+                TitleColor = OxyColors.Black,
+                MajorGridlineStyle = LineStyle.None,
+                MinorGridlineStyle = LineStyle.None,
+                FontSize = 8,
+                AxisTitleDistance = 4
             };
             model.Axes.Add(colorAxis);
 
-            model.Axes.Add(new LinearAxis
-            {
-                Position = AxisPosition.Bottom,
-                Title = xTitle,
-                Minimum = xMin,
-                Maximum = xMax
-            });
-
-            model.Axes.Add(new LinearAxis
-            {
-                Position = AxisPosition.Left,
-                Title = yTitle,
-                Minimum = yMin,
-                Maximum = yMax
-            });
+            model.Axes.Add(CreateLinearAxis(AxisPosition.Bottom, xTitle, xMin, xMax));
+            model.Axes.Add(CreateLinearAxis(AxisPosition.Left, yTitle, yMin, yMax));
 
             HeatMapSeries heat = new HeatMapSeries
             {
@@ -192,14 +223,59 @@ namespace Reloaded
                 Data = values,
                 // Edge: X0..X1/Y0..Y1 span the first/last cell edges.
                 CoordinateDefinition = HeatMapCoordinateDefinition.Edge,
-                RenderMethod = HeatMapRenderMethod.Rectangles,
-                Interpolate = false,
+                // The old chart shades its surface smoothly (Nevron
+                // SmoothPalette); a bitmap heat map matches that better than
+                // hard-edged cells.
+                RenderMethod = HeatMapRenderMethod.Bitmap,
+                Interpolate = true,
                 // MUST stay 0: > 0 paints the whole plot black under wine-mono.
                 LabelFontSize = 0,
                 ColorAxisKey = "Values"
             };
             model.Series.Add(heat);
             return model;
+        }
+
+        /// <summary>
+        /// Axis caption: the parsed description, plus the unit in brackets
+        /// only when the description does not already contain it.
+        /// </summary>
+        private static string AxisTitle(string name, string units, string fallback)
+        {
+            string title = string.IsNullOrEmpty(name) ? fallback : name;
+            if (!string.IsNullOrEmpty(units) &&
+                title.IndexOf(units, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                title = title + " [" + units + "]";
+            }
+            return title;
+        }
+
+        /// <summary>
+        /// One linear axis in the original chart's style: thin black axis and
+        /// tick lines, black labels, inward ticks, no grid (the heat map fills
+        /// the plot area, like the old coloured surface).
+        /// </summary>
+        private static LinearAxis CreateLinearAxis(
+            AxisPosition position, string title, double min, double max)
+        {
+            return new LinearAxis
+            {
+                Position = position,
+                Title = title,
+                Minimum = min,
+                Maximum = max,
+                AxislineColor = OxyColors.Black,
+                TicklineColor = OxyColors.Black,
+                TextColor = OxyColors.Black,
+                TitleColor = OxyColors.Black,
+                MajorGridlineStyle = LineStyle.None,
+                MinorGridlineStyle = LineStyle.None,
+                TickStyle = OxyPlot.Axes.TickStyle.Inside,
+                FontSize = 8,
+                TitleFontSize = 8,
+                AxisTitleDistance = 4
+            };
         }
 
         /// <summary>
@@ -286,10 +362,12 @@ namespace Reloaded
                 sh.Varname,
                 sh.Description,
                 sh.Category,
-                sh.Y_axis_descr,   // horizontal plot axis = grid columns
-                sh.YaxisUnits,
-                sh.X_axis_descr,   // vertical plot axis = grid rows
+                // The old viewer names the horizontal axis from X_axis_descr
+                // (values still come from Y_axis_address, as in frmMain).
+                sh.X_axis_descr,   // horizontal plot axis = grid columns
                 sh.XaxisUnits,
+                sh.Y_axis_descr,   // vertical plot axis = grid rows
+                sh.YaxisUnits,
                 address,
                 sh.Length,
                 values,
