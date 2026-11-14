@@ -31,6 +31,9 @@ namespace Reloaded
         private readonly KryptonRibbonGroupButton _lightButton;
         private readonly KryptonRibbonGroupButton _darkButton;
         private readonly KryptonRibbonGroupButton _minimizeButton;
+        private readonly KryptonRibbonGroupButton _hexButton;
+        private readonly Panel _hexPanel;
+        private readonly HexViewerControl _hex;
         private readonly string _initialFile;
         private KryptonDataGridView _grid;
 
@@ -97,6 +100,24 @@ namespace Reloaded
             themeGroup.Items.Add(themeTriple);
             viewTab.Groups.Add(themeGroup);
 
+            // View tab: Views group (hex viewer panel toggle).
+            KryptonRibbonGroup viewsGroup = new KryptonRibbonGroup
+            {
+                TextLine1 = "Views",
+                TextLine2 = "Panels"
+            };
+            _hexButton = new KryptonRibbonGroupButton
+            {
+                TextLine1 = "Hex",
+                TextLine2 = "viewer",
+                ButtonType = GroupButtonType.Check
+            };
+            _hexButton.Click += (s, e) => ShowHexPanel(_hexButton.Checked);
+            KryptonRibbonGroupTriple viewsTriple = new KryptonRibbonGroupTriple();
+            viewsTriple.Items.Add(_hexButton);
+            viewsGroup.Items.Add(viewsTriple);
+            viewTab.Groups.Add(viewsGroup);
+
             // View tab: Ribbon minimize (collapse to just the tab strip).
             KryptonRibbonGroup ribbonGroup = new KryptonRibbonGroup
             {
@@ -137,18 +158,39 @@ namespace Reloaded
             // --- checksum report ---------------------------------------------
             _report = new KryptonTextBox
             {
+                // Multiline must be set before Dock/Height: Krypton 5.550
+                // resets the height to the single-line value when Multiline
+                // flips afterwards, which collapsed this box to 0 px.
+                Multiline = true,
                 Dock = DockStyle.Bottom,
                 Height = 180,
-                Multiline = true,
                 ReadOnly = true,
                 ScrollBars = ScrollBars.Vertical,
                 Font = new Font("Consolas", 9F)
             };
 
+            // --- hex viewer panel --------------------------------------------
+            // Docked bottom, between the Fill grid and the checksum report:
+            // the report is added after this panel, so it is docked first and
+            // owns the very bottom edge; this panel then claims the strip
+            // above it and the grid takes what is left.  Hidden by default;
+            // the View > Views > Hex check button toggles it.
+            _hex = new HexViewerControl { Dock = DockStyle.Fill };
+            _hexPanel = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 160,
+                Visible = false
+            };
+            _hexPanel.Controls.Add(_hex);
+
             // The block grid is created in OnShown (see below); KryptonDataGridView
             // measures itself in its constructor and needs a window handle that
             // wine-mono cannot create before the message loop runs.
 
+            // Add order gives the desired dock priority (later index docks
+            // first): ribbon, info strip, report, hex panel, then the Fill grid.
+            Controls.Add(_hexPanel);
             Controls.Add(_report);
             Controls.Add(_infoLabel);
             Controls.Add(_ribbon);
@@ -212,12 +254,46 @@ namespace Reloaded
             // The form's client background is drawn from its own StateCommon
             // redirect (BackStyle = FormMain).  Pin it directly to the palette
             // value so a transparent label on the form shows a dark surface.
+            ApplyHexPalette(palette);
+
             Color formBack = palette.GetBackColor1(PaletteBackStyle.FormMain, PaletteState.Normal);
             StateCommon.Back.Draw = InheritBool.True;
             StateCommon.Back.Color1 = formBack;
             StateCommon.Back.Color2 = formBack;
             StateCommon.Back.ColorStyle = PaletteColorStyle.Solid;
             BackColor = formBack;
+        }
+
+        /// <summary>
+        /// Matches the plain GDI+ hex surface to the active palette.  The
+        /// control's own <c>BackColor</c>/<c>ForeColor</c>/<c>Font</c> and its
+        /// public colour fields are the theming hooks; nothing here is
+        /// dark-specific, and any lookup failure keeps the control defaults.
+        /// </summary>
+        private void ApplyHexPalette(KryptonPalette palette)
+        {
+            try
+            {
+                Color surface = palette.GetBackColor1(PaletteBackStyle.InputControlStandalone, PaletteState.Normal);
+                Color text = palette.GetContentShortTextColor1(PaletteContentStyle.InputControlStandalone, PaletteState.Normal);
+                if (surface.A == 255) _hex.BackColor = surface;
+                if (text.A == 255) _hex.ForeColor = text;
+            }
+            catch
+            {
+                // Keep SystemColors defaults (light surface).
+            }
+            _hex.Invalidate();
+        }
+
+        /// <summary>
+        /// Shows or hides the docked hex viewer.  Hiding a docked control
+        /// removes it from layout, so the Fill grid immediately reclaims the
+        /// space.
+        /// </summary>
+        private void ShowHexPanel(bool visible)
+        {
+            _hexPanel.Visible = visible;
         }
 
         /// <summary>
@@ -268,6 +344,10 @@ namespace Reloaded
                 _infoLabel.Text = "Could not read file: " + ex.Message;
                 return;
             }
+
+            // Hex viewer: show the bytes of whatever file was loaded.
+            _hex.SetBytes(image);
+            _hex.SetCurrentAddress(0);
 
             string part = FindVagPartNumber(image);
             _infoLabel.Text = string.Format(
