@@ -36,6 +36,7 @@
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="Krypton.Toolkit">
@@ -59,11 +60,110 @@
     <Compile Include="Main.cs" />
     <Compile Include="Theming.cs" />
     <Compile Include="HexViewerControl.cs" />
+    <Compile Include="MapList.cs" />
     <Compile Include="..\Edc15V256Layout.cs">
       <Link>Edc15V256Layout.cs</Link>
     </Compile>
     <Compile Include="..\EDC15VM256Checksum.cs">
       <Link>EDC15VM256Checksum.cs</Link>
     </Compile>
+    <!-- Map-list parser closure (EDC15VFileParser + everything the compiler
+         demands for it).  All UI-free; see MAPLIST.md. -->
+    <Compile Include="..\Core\Enums.cs">
+      <Link>Core\Enums.cs</Link>
+    </Compile>
+    <Compile Include="..\SortableCollectionBase.cs">
+      <Link>SortableCollectionBase.cs</Link>
+    </Compile>
+    <Compile Include="..\MapSelector.cs">
+      <Link>MapSelector.cs</Link>
+    </Compile>
+    <Compile Include="..\CodeBlock.cs">
+      <Link>CodeBlock.cs</Link>
+    </Compile>
+    <Compile Include="..\AxisHelper.cs">
+      <Link>AxisHelper.cs</Link>
+    </Compile>
+    <Compile Include="..\SymbolHelper.cs">
+      <Link>SymbolHelper.cs</Link>
+    </Compile>
+    <Compile Include="..\SymbolCollection.cs">
+      <Link>SymbolCollection.cs</Link>
+    </Compile>
+    <Compile Include="..\SymbolTranslator.cs">
+      <Link>SymbolTranslator.cs</Link>
+    </Compile>
+    <Compile Include="..\SymbolAxesTranslator.cs">
+      <Link>SymbolAxesTranslator.cs</Link>
+    </Compile>
+    <Compile Include="..\ChecksumResultDetails.cs">
+      <Link>ChecksumResultDetails.cs</Link>
+    </Compile>
+    <Compile Include="..\TransactionEntry.cs">
+      <Link>TransactionEntry.cs</Link>
+    </Compile>
+    <Compile Include="..\TransactionCollection.cs">
+      <Link>TransactionCollection.cs</Link>
+    </Compile>
+    <Compile Include="..\TransactionLog.cs">
+      <Link>TransactionLog.cs</Link>
+    </Compile>
+    <Compile Include="..\ProjectLog.cs">
+      <Link>ProjectLog.cs</Link>
+    </Compile>
+    <Compile Include="..\partNumberConverter.cs">
+      <Link>partNumberConverter.cs</Link>
+    </Compile>
+    <Compile Include="..\MapLabelFile.cs">
+      <Link>MapLabelFile.cs</Link>
+    </Compile>
+    <Compile Include="..\IEDCFileParser.cs">
+      <Link>IEDCFileParser.cs</Link>
+    </Compile>
+    <Compile Include="..\Tools.cs">
+      <Link>Tools.cs</Link>
+    </Compile>
+    <!-- Parsers/checksums referenced from Tools.GetParserForFile and
+         Tools.UpdateChecksum.  They are UI-free; without them Tools.cs does
+         not compile. -->
+    <Compile Include="..\EDC15PFileParser.cs">
+      <Link>EDC15PFileParser.cs</Link>
+    </Compile>
+    <Compile Include="..\EDC15P6FileParser.cs">
+      <Link>EDC15P6FileParser.cs</Link>
+    </Compile>
+    <Compile Include="..\EDC15CFileParser.cs">
+      <Link>EDC15CFileParser.cs</Link>
+    </Compile>
+    <Compile Include="..\EDC15MFileParser.cs">
+      <Link>EDC15MFileParser.cs</Link>
+    </Compile>
+    <Compile Include="..\EDC15VFileParser.cs">
+      <Link>EDC15VFileParser.cs</Link>
+    </Compile>
+    <Compile Include="..\EDC16FileParser.cs">
+      <Link>EDC16FileParser.cs</Link>
+    </Compile>
+    <Compile Include="..\EDC17FileParser.cs">
+      <Link>EDC17FileParser.cs</Link>
+    </Compile>
+    <Compile Include="..\MSA15FileParser.cs">
+      <Link>MSA15FileParser.cs</Link>
+    </Compile>
+    <Compile Include="..\MSA6FileParser.cs">
+      <Link>MSA6FileParser.cs</Link>
+    </Compile>
+    <Compile Include="..\EDC15P_checksum.cs">
+      <Link>EDC15P_checksum.cs</Link>
+    </Compile>
+    <Compile Include="..\EDC15VM_checksum.cs">
+      <Link>EDC15VM_checksum.cs</Link>
+    </Compile>
+    <Compile Include="..\MSA15_checksum.cs">
+      <Link>MSA15_checksum.cs</Link>
+    </Compile>
+    <EmbeddedResource Include="..\Labels\EDC15V-5_SG1623.labels">
+      <Link>Labels\EDC15V-5_SG1623.labels</Link>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>

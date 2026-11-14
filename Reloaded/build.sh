@@ -8,6 +8,11 @@
 # BCL assemblies are passed as bare names and resolved by csc from the
 # .NET 4.0 reference-assembly directory (same approach as tools/mkrsp.py);
 # the in-box csc.rsp is empty, so they must be listed explicitly.
+#
+# The repo-root map-list parser (EDC15VFileParser) is compiled in as well; it
+# is UI-free but needs its core collections, Tools, and the parser/checksum
+# classes Tools.GetParserForFile/UpdateChecksum reference.  See MAPLIST.md for
+# the closure and the smoke test.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -18,9 +23,48 @@ export WINEDEBUG=-all
 
 command -v wine >/dev/null || { echo "wine is not installed" >&2; exit 1; }
 
+# Repo-root sources required by the map-list closure, in dependency order for
+# readability (csc does not care about order).
+CORE_SOURCES=(
+    ../Core/Enums.cs
+    ../SortableCollectionBase.cs
+    ../MapSelector.cs
+    ../CodeBlock.cs
+    ../AxisHelper.cs
+    ../SymbolHelper.cs
+    ../SymbolCollection.cs
+    ../SymbolTranslator.cs
+    ../SymbolAxesTranslator.cs
+    ../ChecksumResultDetails.cs
+    ../TransactionEntry.cs
+    ../TransactionCollection.cs
+    ../TransactionLog.cs
+    ../ProjectLog.cs
+    ../partNumberConverter.cs
+    ../MapLabelFile.cs
+    ../IEDCFileParser.cs
+    ../Tools.cs
+    # Parsers/checksums referenced by Tools.GetParserForFile / UpdateChecksum.
+    ../EDC15PFileParser.cs
+    ../EDC15P6FileParser.cs
+    ../EDC15CFileParser.cs
+    ../EDC15MFileParser.cs
+    ../EDC15VFileParser.cs
+    ../EDC16FileParser.cs
+    ../EDC17FileParser.cs
+    ../MSA15FileParser.cs
+    ../MSA6FileParser.cs
+    ../EDC15P_checksum.cs
+    ../EDC15VM_checksum.cs
+    ../MSA15_checksum.cs
+    ../Edc15V256Layout.cs
+    ../EDC15VM256Checksum.cs
+)
+
 wine "$CSC" /nologo /target:winexe /out:Reloaded.exe \
     /r:System.dll \
     /r:System.Core.dll \
+    /r:System.Data.dll \
     /r:System.Drawing.dll \
     /r:System.Windows.Forms.dll \
     /r:System.Design.dll \
@@ -28,8 +72,9 @@ wine "$CSC" /nologo /target:winexe /out:Reloaded.exe \
     /reference:lib/Krypton.Ribbon.dll \
     /reference:lib/OxyPlot.dll \
     /reference:lib/OxyPlot.WindowsForms.dll \
-    ../Edc15V256Layout.cs \
-    ../EDC15VM256Checksum.cs \
+    /resource:../Labels/EDC15V-5_SG1623.labels,EDC15V-5_SG1623.labels \
+    "${CORE_SOURCES[@]}" \
+    MapList.cs \
     Main.cs \
     Theming.cs \
     HexViewerControl.cs

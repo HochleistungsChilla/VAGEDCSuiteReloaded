@@ -183,3 +183,6 @@ obj/
 
 # release archives
 dist/
+
+# codegraph local index
+.codegraph/

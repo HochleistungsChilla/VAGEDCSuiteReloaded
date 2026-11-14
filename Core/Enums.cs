@@ -52,4 +52,16 @@ namespace VAGSuite
         AS2,
         Damos
     }
+
+    // Axis selector used by the parsers' axis-validation helpers.  It used
+    // to be nested in MapViewerEx (a DevExpress/Nevron WinForms control),
+    // which forced the pure parsing code to reference the whole UI control.
+    // The values are unchanged and MapViewerEx.AxisIdent stays as-is for
+    // the UI code; parsers now use this top-level enum.
+    public enum AxisIdent : int
+    {
+        X_Axis = 0,
+        Y_Axis = 1,
+        Z_Axis = 2
+    }
 }
