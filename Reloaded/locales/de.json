@@ -1,0 +1,52 @@
+{
+  "window_title": "VAGEDCSuite-Reloaded",
+
+  "tab_file": "Datei",
+  "tab_view": "Ansicht",
+
+  "group_file": "Datei",
+  "group_image": "Abbild",
+  "file_open": "Öffnen",
+  "file_open_binary": "Binärdatei",
+
+  "view_theme": "Design",
+  "view_appearance": "Darstellung",
+  "theme_light": "Hell",
+  "theme_dark": "Dunkel",
+  "theme_sub": "Design",
+
+  "group_views": "Ansichten",
+  "group_panels": "Bereiche",
+  "view_hex": "Hex",
+  "view_hex_viewer": "Betrachter",
+
+  "group_ribbon": "Menüband",
+  "group_layout": "Anordnung",
+  "ribbon_minimize": "Minimieren",
+  "ribbon_sub": "Menüband",
+
+  "info_open_binary": "Öffnen Sie eine 256-KB-EDC15V-5-Binärdatei.",
+  "info_file_format": "{0}   |   {1} Bytes (0x{1:X})   |   Teilenummer: {2}",
+  "part_number": "Teilenummer",
+  "info_not_256kb": "kein 256-KB-EDC15V-5-Abbild (keine bekannten Marker)",
+  "report_not_256kb": "Kein 256-KB-EDC15V-5-Abbild.",
+  "info_read_error": "Datei konnte nicht gelesen werden: {0}",
+
+  "block": "Block",
+  "address_range": "Adressbereich",
+  "gearbox": "Getriebe",
+  "code": "Code",
+
+  "block_1": "Block 1",
+  "block_2": "Block 2",
+  "block_3": "Block 3",
+
+  "gearbox_automatic": "Automatik",
+  "gearbox_manual": "Schaltgetriebe",
+  "gearbox_manual_fwd": "Schaltgetriebe, Frontantrieb",
+  "gearbox_4x4": "Allrad",
+
+  "checksum_report": "Prüfsumme: {0}/{1} Felder OK",
+
+  "dialog_filter": "Binärdateien (*.bin)|*.bin|Alle Dateien (*.*)|*.*"
+}
