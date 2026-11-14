@@ -30,7 +30,9 @@ wine "$CSC" /nologo /target:winexe /out:Reloaded.exe \
     /reference:lib/OxyPlot.WindowsForms.dll \
     ../Edc15V256Layout.cs \
     ../EDC15VM256Checksum.cs \
-    Main.cs
+    Main.cs \
+    Theming.cs \
+    HexViewerControl.cs
 
 # Copy the private assemblies next to the .exe (the .NET Framework CLR, and
 # Mono's loader, probe the application base directory — the CopyLocal step an

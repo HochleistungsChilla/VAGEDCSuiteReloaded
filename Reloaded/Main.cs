@@ -14,22 +14,41 @@ namespace Reloaded
     /// Skeleton of the DevExpress-free VAGEDCSuite Reloaded UI: a Krypton
     /// ribbon and, on "Open", a 256 KB EDC15V-5 image is inspected with the
     /// clean core (Edc15V256Layout + EDC15VM256Checksum).  No DevExpress.
+    ///
+    /// The whole form is themed through two <see cref="KryptonPalette"/>
+    /// instances (see <see cref="ThemePalettes"/>): a light Sparkle-based
+    /// theme and a tuned dark Office2010Black theme, switched from the
+    /// ribbon's "View > Theme" group and persisted under HKCU.
     /// </summary>
     public class MainForm : KryptonForm
     {
-        private readonly Label _infoLabel;
-        private readonly DataGridView _grid;
-        private readonly TextBox _report;
+        private readonly KryptonManager _manager;
+        private readonly KryptonPalette _lightPalette;
+        private readonly KryptonPalette _darkPalette;
+        private readonly KryptonRibbon _ribbon;
+        private readonly KryptonLabel _infoLabel;
+        private readonly KryptonTextBox _report;
+        private readonly KryptonRibbonGroupButton _lightButton;
+        private readonly KryptonRibbonGroupButton _darkButton;
+        private readonly string _initialFile;
+        private KryptonDataGridView _grid;
 
-        public MainForm()
+        public MainForm(ThemeKind initialTheme, string initialFile)
         {
+            _initialFile = initialFile;
+            _manager = new KryptonManager();
+            _lightPalette = ThemePalettes.CreateLight();
+            _darkPalette = ThemePalettes.CreateDark();
+
             Text = "VAGEDCSuite-Reloaded";
-            Width = 900;
-            Height = 640;
+            Width = 960;
+            Height = 680;
             StartPosition = FormStartPosition.CenterScreen;
 
             // --- ribbon -------------------------------------------------------
-            KryptonRibbon ribbon = new KryptonRibbon { Dock = DockStyle.Top };
+            _ribbon = new KryptonRibbon { Dock = DockStyle.Top };
+
+            // File tab: Open
             KryptonRibbonTab fileTab = new KryptonRibbonTab { Text = "File" };
             KryptonRibbonGroup fileGroup = new KryptonRibbonGroup
             {
@@ -42,25 +61,91 @@ namespace Reloaded
                 TextLine2 = "binary"
             };
             openButton.Click += (s, e) => OpenFile();
-            KryptonRibbonGroupTriple triple = new KryptonRibbonGroupTriple();
-            triple.Items.Add(openButton);
-            fileGroup.Items.Add(triple);
+            KryptonRibbonGroupTriple fileTriple = new KryptonRibbonGroupTriple();
+            fileTriple.Items.Add(openButton);
+            fileGroup.Items.Add(fileTriple);
             fileTab.Groups.Add(fileGroup);
-            ribbon.RibbonTabs.Add(fileTab);
+
+            // View tab: Theme (Light / Dark)
+            KryptonRibbonTab viewTab = new KryptonRibbonTab { Text = "View" };
+            KryptonRibbonGroup themeGroup = new KryptonRibbonGroup
+            {
+                TextLine1 = "Theme",
+                TextLine2 = "Appearance"
+            };
+            _lightButton = new KryptonRibbonGroupButton
+            {
+                TextLine1 = "Light",
+                TextLine2 = "theme",
+                ButtonType = GroupButtonType.Check
+            };
+            _darkButton = new KryptonRibbonGroupButton
+            {
+                TextLine1 = "Dark",
+                TextLine2 = "theme",
+                ButtonType = GroupButtonType.Check
+            };
+            _lightButton.Click += (s, e) => SetTheme(ThemeKind.Light);
+            _darkButton.Click += (s, e) => SetTheme(ThemeKind.Dark);
+            KryptonRibbonGroupTriple themeTriple = new KryptonRibbonGroupTriple();
+            themeTriple.Items.Add(_lightButton);
+            themeTriple.Items.Add(_darkButton);
+            themeGroup.Items.Add(themeTriple);
+            viewTab.Groups.Add(themeGroup);
+
+            _ribbon.RibbonTabs.Add(fileTab);
+            _ribbon.RibbonTabs.Add(viewTab);
 
             // --- info strip ---------------------------------------------------
-            _infoLabel = new Label
+            _infoLabel = new KryptonLabel
             {
                 Dock = DockStyle.Top,
                 Height = 52,
-                Padding = new Padding(8),
-                TextAlign = ContentAlignment.MiddleLeft,
-                Font = new Font("Segoe UI", 10F),
+                AutoSize = false,
                 Text = "Open a 256 KB EDC15V-5 binary."
             };
+            _infoLabel.StateCommon.ShortText.Font = new Font("Segoe UI", 10F);
+            _infoLabel.StateCommon.ShortText.TextV = PaletteRelativeAlign.Center;
+            _infoLabel.StateCommon.Padding = new Padding(8, 0, 8, 0);
 
-            // --- block grid ---------------------------------------------------
-            _grid = new DataGridView
+            // --- checksum report ---------------------------------------------
+            _report = new KryptonTextBox
+            {
+                Dock = DockStyle.Bottom,
+                Height = 180,
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                Font = new Font("Consolas", 9F)
+            };
+
+            // The block grid is created in OnShown (see below); KryptonDataGridView
+            // measures itself in its constructor and needs a window handle that
+            // wine-mono cannot create before the message loop runs.
+
+            Controls.Add(_report);
+            Controls.Add(_infoLabel);
+            Controls.Add(_ribbon);
+
+            // Apply the palette before the form is first shown.  The global
+            // manager assignment covers the grid/textbox/label; the form and
+            // ribbon are pinned explicitly because in Krypton 5.550 they do
+            // not reliably re-resolve a custom GlobalPalette set after they
+            // have been created (see THEMING.md).
+            ApplyTheme(initialTheme);
+        }
+
+        /// <summary>
+        /// Builds the block grid once the form is visible.  This must happen
+        /// after the message loop has started, because <see cref="KryptonDataGridView"/>
+        /// calls <c>CreateGraphics()</c> in its constructor and wine-mono throws
+        /// "Error creating window handle" for a handle created before the loop.
+        /// </summary>
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+
+            _grid = new KryptonDataGridView
             {
                 Dock = DockStyle.Fill,
                 ReadOnly = true,
@@ -75,22 +160,61 @@ namespace Reloaded
             _grid.Columns.Add("gearbox", "Gearbox");
             _grid.Columns.Add("code", "Code");
 
-            // --- checksum report ---------------------------------------------
-            _report = new TextBox
-            {
-                Dock = DockStyle.Bottom,
-                Height = 180,
-                Multiline = true,
-                ReadOnly = true,
-                ScrollBars = ScrollBars.Vertical,
-                Font = new Font("Consolas", 9F),
-                BackColor = Color.White
-            };
-
+            // Add at index 0 so the Fill grid is docked last (after ribbon,
+            // info strip and report have claimed their space).
             Controls.Add(_grid);
-            Controls.Add(_infoLabel);
-            Controls.Add(_report);
-            Controls.Add(ribbon);
+            Controls.SetChildIndex(_grid, 0);
+
+            if (_initialFile != null) Inspect(_initialFile);
+        }
+
+        /// <summary>Applies a palette to the manager, the form and every control.</summary>
+        private void ApplyPalette(KryptonPalette palette)
+        {
+            _manager.GlobalPaletteMode = PaletteModeManager.Custom;
+            _manager.GlobalPalette = palette;
+
+            // Form + ribbon are pinned explicitly: Krypton 5.550 does not
+            // reliably re-resolve a custom GlobalPalette set after creation
+            // (see THEMING.md).
+            Palette = palette;
+            _ribbon.Palette = palette;
+            _infoLabel.Palette = palette;
+            _report.Palette = palette;
+            if (_grid != null) _grid.Palette = palette;
+
+            // The form's client background is drawn from its own StateCommon
+            // redirect (BackStyle = FormMain).  Pin it directly to the palette
+            // value so a transparent label on the form shows a dark surface.
+            Color formBack = palette.GetBackColor1(PaletteBackStyle.FormMain, PaletteState.Normal);
+            StateCommon.Back.Draw = InheritBool.True;
+            StateCommon.Back.Color1 = formBack;
+            StateCommon.Back.Color2 = formBack;
+            StateCommon.Back.ColorStyle = PaletteColorStyle.Solid;
+            BackColor = formBack;
+        }
+
+        /// <summary>
+        /// Switches the palette and reflects the choice in the ribbon.
+        /// Does not persist; persistence is the caller's job (the click
+        /// handlers persist, the startup path does not).
+        /// </summary>
+        public void ApplyTheme(ThemeKind kind)
+        {
+            ApplyPalette(kind == ThemeKind.Dark ? _darkPalette : _lightPalette);
+            _lightButton.Checked = kind == ThemeKind.Light;
+            _darkButton.Checked = kind == ThemeKind.Dark;
+            // KryptonLabel rejects transparent backgrounds and defaults its
+            // BackColor to SystemColors.Control, so pin its solid fill to the
+            // themed form background (its *text* colour comes from the palette's
+            // LabelStyles).  See THEMING.md.
+            _infoLabel.BackColor = ThemePalettes.FormBackground(kind);
+        }
+
+        private void SetTheme(ThemeKind kind)
+        {
+            ApplyTheme(kind);
+            ThemeStore.Save(kind);
         }
 
         private void OpenFile()
@@ -102,9 +226,6 @@ namespace Reloaded
                 Inspect(dlg.FileName);
             }
         }
-
-        /// <summary>Loads and inspects a file (also used for the CLI arg).</summary>
-        public void LoadInitial(string path) { Inspect(path); }
 
         private void Inspect(string path)
         {
@@ -180,8 +301,25 @@ namespace Reloaded
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            MainForm form = new MainForm();
-            if (args.Length > 0) form.LoadInitial(args[0]);
+
+            // Optional theme override for scripting/screenshots, e.g. --theme=dark.
+            string file = null;
+            ThemeKind? forced = null;
+            foreach (string arg in args)
+            {
+                if (arg.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase))
+                {
+                    string value = arg.Substring("--theme=".Length);
+                    if (value.Equals("dark", StringComparison.OrdinalIgnoreCase)) forced = ThemeKind.Dark;
+                    else if (value.Equals("light", StringComparison.OrdinalIgnoreCase)) forced = ThemeKind.Light;
+                }
+                else if (!arg.StartsWith("--", StringComparison.OrdinalIgnoreCase))
+                {
+                    file = arg;
+                }
+            }
+
+            MainForm form = new MainForm(forced ?? ThemeStore.Load(), file);
             Application.Run(form);
         }
     }
