@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -46,8 +47,6 @@ namespace Reloaded
         }
 
         private readonly KryptonManager _manager;
-        private readonly KryptonPalette _lightPalette;
-        private readonly KryptonPalette _darkPalette;
         private readonly KryptonRibbon _ribbon;
 
         // --- ribbon tabs and groups -----------------------------------------
@@ -56,23 +55,31 @@ namespace Reloaded
         private readonly KryptonRibbonTab _helpTab;
         private readonly KryptonRibbonGroup _fileGroup;
         private readonly KryptonRibbonGroup _imageGroup;
+        private readonly KryptonRibbonGroup _chipsGroup;
+        private readonly KryptonRibbonGroup _labelsGroup;
         private readonly KryptonRibbonGroup _themeGroup;
         private readonly KryptonRibbonGroup _viewsGroup;
         private readonly KryptonRibbonGroup _mapGroup;
+        private readonly KryptonRibbonGroup _targetGroup;
         private readonly KryptonRibbonGroup _ribbonGroup;
         private readonly KryptonRibbonGroup _languageGroup;
         private readonly KryptonRibbonGroup _helpGroup;
         private readonly KryptonRibbonGroupButton _openButton;
         private readonly KryptonRibbonGroupButton _reloadButton;
         private readonly KryptonRibbonGroupButton _closeButton;
-        private readonly KryptonRibbonGroupButton _lightButton;
-        private readonly KryptonRibbonGroupButton _darkButton;
+        private readonly KryptonRibbonGroupButton _mergeSplitButton;
+        private readonly KryptonRibbonGroupButton _loadLabelsButton;
+        private readonly KryptonRibbonGroupButton _themeSettingsButton;
         private readonly KryptonRibbonGroupButton _minimizeButton;
         private readonly KryptonRibbonGroupButton _mapsButton;
         private readonly KryptonRibbonGroupButton _blocksButton;
         private readonly KryptonRibbonGroupButton _hexButton;
         private readonly KryptonRibbonGroupButton _openMapButton;
         private readonly KryptonRibbonGroupButton _closeMapButton;
+        private readonly KryptonRibbonGroupButton _allBlocksButton;
+        private readonly KryptonRibbonGroupButton _block1Button;
+        private readonly KryptonRibbonGroupButton _block2Button;
+        private readonly KryptonRibbonGroupButton _block3Button;
         private readonly KryptonRibbonGroupButton _englishButton;
         private readonly KryptonRibbonGroupButton _germanButton;
         private readonly KryptonRibbonGroupButton _aboutButton;
@@ -86,7 +93,7 @@ namespace Reloaded
         private readonly Label _treeHeaderLabel;
         private readonly Panel _viewerHeader;
         private readonly Label _viewerTitleLabel;
-        private readonly Panel _viewerBody;
+        private readonly RoundedPanel _viewerBody;
         private readonly Panel _placeholder;
         private readonly Label _placeholderTitle;
         private readonly Label _placeholderHint;
@@ -109,26 +116,36 @@ namespace Reloaded
         private Control _inlinePlot;
         private MainView _view = MainView.Maps;
 
+        /// <summary>
+        /// Optional map to open automatically once the tree is loaded
+        /// (--open=&lt;varname&gt;, a script/screenshot hook).
+        /// </summary>
+        public static string AutoOpenMap;
+
         // Last successfully requested path; re-inspected after a language
         // switch so the dynamic texts are re-rendered in the new language.
         private string _lastPath;
         private MapList.Map _selectedMap;
         private int _mapCount;
 
+        // External *.labels file (File > Labels > Load labels), applied on top
+        // of the embedded default label set.  Kept across Reload, dropped when
+        // a different image is opened.
+        private List<MapLabel> _externalLabels;
+        private string _labelsPath;
+
         // Colours derived from the active palette for the plain WinForms
         // chrome (headers, splitter, tree, status strip, placeholder).
         private Color _chromeSurface = Color.White;
-        private Color _chromeHeader = Color.FromArgb(232, 232, 234);
-        private Color _chromeLine = Color.FromArgb(214, 214, 216);
-        private Color _chromeText = Color.FromArgb(34, 34, 34);
+        private Color _chromeHeader = Color.FromArgb(236, 239, 243);
+        private Color _chromeLine = Color.FromArgb(225, 228, 232);
+        private Color _chromeText = Color.FromArgb(31, 35, 40);
         private Color _chromeMuted = Color.FromArgb(120, 120, 120);
 
         public MainForm(ThemeKind initialTheme, string initialFile)
         {
             _initialFile = initialFile;
             _manager = new KryptonManager();
-            _lightPalette = ThemePalettes.CreateLight();
-            _darkPalette = ThemePalettes.CreateDark();
 
             Width = 1100;
             Height = 720;
@@ -162,6 +179,26 @@ namespace Reloaded
             _imageGroup.MinimumWidth = 260;
             _fileTab.Groups.Add(_imageGroup);
 
+            // File tab: Chips (merge two 128 KB halves / split a 256 KB image).
+            // The dialog itself is MergeSplitForm; the byte order lives in the
+            // UI-free ChipMergeSplit class.
+            _chipsGroup = CreateGroup("chips");
+            _mergeSplitButton = CreateButton("merge");
+            _mergeSplitButton.Click += (s, e) => ShowMergeSplit();
+            AddToTriple(_chipsGroup, _mergeSplitButton);
+            _chipsGroup.MinimumWidth = 160;
+            _fileTab.Groups.Add(_chipsGroup);
+
+            // File tab: Labels (external *.labels file on top of the embedded
+            // default labels).  Parsed by MapLabelFile, applied by MapList
+            // through the parser's own overlay.
+            _labelsGroup = CreateGroup("labels");
+            _loadLabelsButton = CreateButton("labels");
+            _loadLabelsButton.Click += (s, e) => LoadLabelsFile();
+            AddToTriple(_labelsGroup, _loadLabelsButton);
+            _labelsGroup.MinimumWidth = 170;
+            _fileTab.Groups.Add(_labelsGroup);
+
             // View tab: Views (Maps / Blocks / Hex)
             _viewTab = new KryptonRibbonTab();
             _viewsGroup = CreateGroup("views");
@@ -191,16 +228,37 @@ namespace Reloaded
             _mapGroup.MinimumWidth = 200;
             _viewTab.Groups.Add(_mapGroup);
 
-            // View tab: Theme (Light / Dark)
+            // View tab: Target block (All / 1 / 2 / 3).  The choice decides
+            // into which of the three 32 KB data blocks a saved map change is
+            // replicated (see WRITEPATH.md).  Persisted in HKCU like the theme.
+            _targetGroup = CreateGroup("target");
+            _allBlocksButton = CreateButton("blocks");
+            _allBlocksButton.ButtonType = GroupButtonType.Check;
+            _allBlocksButton.Click += (s, e) => SelectTargetBlock(Edc15V256Layout.MaskAll, true);
+            _block1Button = CreateButton("maps");
+            _block1Button.ButtonType = GroupButtonType.Check;
+            _block1Button.Click += (s, e) => SelectTargetBlock(1, false);
+            _block2Button = CreateButton("hex");
+            _block2Button.ButtonType = GroupButtonType.Check;
+            _block2Button.Click += (s, e) => SelectTargetBlock(2, false);
+            _block3Button = CreateButton("heat");
+            _block3Button.ButtonType = GroupButtonType.Check;
+            _block3Button.Click += (s, e) => SelectTargetBlock(4, false);
+            // Krypton allows at most three items per triple, so the "all"
+            // choice gets its own triple next to the three single blocks.
+            KryptonRibbonGroupTriple allTriple = new KryptonRibbonGroupTriple();
+            allTriple.Items.Add(_allBlocksButton);
+            _targetGroup.Items.Add(allTriple);
+            AddToTriple(_targetGroup, _block1Button, _block2Button, _block3Button);
+            _targetGroup.MinimumWidth = 320;
+            _viewTab.Groups.Add(_targetGroup);
+
+            // View tab: Theme settings (family + mode dialog)
             _themeGroup = CreateGroup("theme");
-            _lightButton = CreateButton("light");
-            _lightButton.ButtonType = GroupButtonType.Check;
-            _darkButton = CreateButton("dark");
-            _darkButton.ButtonType = GroupButtonType.Check;
-            _lightButton.Click += (s, e) => SetTheme(ThemeKind.Light);
-            _darkButton.Click += (s, e) => SetTheme(ThemeKind.Dark);
-            AddToTriple(_themeGroup, _lightButton, _darkButton);
-            _themeGroup.MinimumWidth = 190;
+            _themeSettingsButton = CreateButton("theme_settings");
+            _themeSettingsButton.Click += (s, e) => OpenThemeSettings();
+            AddToTriple(_themeGroup, _themeSettingsButton);
+            _themeGroup.MinimumWidth = 150;
             _viewTab.Groups.Add(_themeGroup);
 
             // View tab: Language (English / Deutsch).  The button labels stay
@@ -315,7 +373,7 @@ namespace Reloaded
             _viewerHeader.Controls.Add(_viewerTitleLabel);
             _viewerHeader.Paint += PaintChromeBorder;
 
-            _viewerBody = new Panel { Dock = DockStyle.Fill };
+            _viewerBody = new RoundedPanel { Dock = DockStyle.Fill, CornerRadius = 8 };
 
             _placeholderTitle = new Label
             {
@@ -343,6 +401,9 @@ namespace Reloaded
             _split.Panel1.Controls.Add(_leftHeader);
             _split.Panel2.Controls.Add(_viewerBody);
             _split.Panel2.Controls.Add(_viewerHeader);
+            // "Luft" um die Karte (8 px), damit die runden Ecken des Viewers
+            // sichtbar werden.
+            _split.Panel2.Padding = new Padding(8);
 
             // --- blocks + checksum (behind View > Views > Blocks) ------------
             _blocksPanel = new Panel { Dock = DockStyle.Fill, Visible = false };
@@ -420,16 +481,67 @@ namespace Reloaded
             Controls.Add(_infoPanel);
             Controls.Add(_ribbon);
 
+            // Keep the target block buttons in sync when something else
+            // changes the persisted selection.
+            TargetBlockStore.MaskChanged += TargetBlocksChanged;
+
             // Apply the palette before the form is first shown.  See THEMING.md.
             ApplyTheme(initialTheme);
+            ThemeStore.Changed += ThemeStoreChanged;
 
             // All static texts are assigned from the I18n table.
             ApplyTexts();
             UpdateViewButtons();
             UpdateStatusSeparators();
+            SyncTargetBlockButtons();
             _reloadButton.Enabled = false;
             _openMapButton.Enabled = false;
             _closeMapButton.Enabled = false;
+            _loadLabelsButton.Enabled = false;
+        }
+
+        /// <summary>Refreshes the ribbon check states when the mask changes.</summary>
+        private void TargetBlocksChanged(object sender, EventArgs e)
+        {
+            if (IsDisposed) return;
+            SyncTargetBlockButtons();
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            TargetBlockStore.MaskChanged -= TargetBlocksChanged;
+            ThemeStore.Changed -= ThemeStoreChanged;
+            base.OnFormClosed(e);
+        }
+
+        private const int WmSettingChange = 0x001A;
+
+        /// <summary>
+        /// Follows the OS dark/light change live: Windows broadcasts
+        /// <c>WM_SETTINGCHANGE</c> with <c>lParam = "ImmersiveColorSet"</c> when
+        /// the user toggles the system dark mode.  Only <c>Auto</c> mode reacts
+        /// (manual Light/Dark wins), so this simply re-resolves the theme — no
+        /// polling timer, no restart.
+        /// </summary>
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WmSettingChange)
+            {
+                string setting = null;
+                try
+                {
+                    setting = System.Runtime.InteropServices.Marshal.PtrToStringUni(m.LParam);
+                }
+                catch
+                {
+                    // lParam not a string; ignore this notification.
+                }
+                if (setting == "ImmersiveColorSet")
+                {
+                    ThemeStore.Refresh();
+                }
+            }
+            base.WndProc(ref m);
         }
 
         /// <summary>
@@ -514,6 +626,27 @@ namespace Reloaded
             LayoutPlaceholder();
 
             if (_initialFile != null) Inspect(_initialFile);
+
+            // Script hook: open a named map right away (--open=<varname>).
+            if (!string.IsNullOrEmpty(AutoOpenMap) && _lastPath != null)
+            {
+                try
+                {
+                    List<MapList.Map> maps = MapList.GetMaps(_lastPath);
+                    foreach (MapList.Map map in maps)
+                    {
+                        if (string.Equals(map.Varname, AutoOpenMap, StringComparison.OrdinalIgnoreCase))
+                        {
+                            OpenMapInline(map);
+                            break;
+                        }
+                    }
+                }
+                catch
+                {
+                    // The tree is already visible; a failed auto-open is not fatal.
+                }
+            }
         }
 
         // ------------------------------------------------------------------
@@ -568,7 +701,7 @@ namespace Reloaded
                 float scale = size / 32f;
                 g.ScaleTransform(scale, scale);
 
-                Color accent = Color.FromArgb(45, 127, 193);
+                Color accent = Color.FromArgb(47, 111, 235);
                 using (Pen pen = new Pen(accent, 2.2f))
                 {
                     pen.StartCap = LineCap.Round;
@@ -607,6 +740,34 @@ namespace Reloaded
                         case "close":
                             g.DrawLine(pen, 9, 9, 23, 23);
                             g.DrawLine(pen, 23, 9, 9, 23);
+                            break;
+
+                        case "merge":
+                            // Two chip halves on the left, their interleaved
+                            // image on the right.
+                            using (SolidBrush brush = new SolidBrush(Color.FromArgb(200, accent)))
+                            {
+                                g.FillRectangle(brush, 4, 7, 10, 7);
+                                g.FillRectangle(brush, 4, 18, 10, 7);
+                            }
+                            g.DrawRectangle(pen, 19, 8, 9, 16);
+                            g.DrawLine(pen, 15, 10.5f, 18, 10.5f);
+                            g.DrawLine(pen, 15, 21.5f, 18, 21.5f);
+                            break;
+
+                        case "labels":
+                            // Label tag: a rectangle with three text lines.
+                            using (SolidBrush fill = new SolidBrush(Color.FromArgb(34, accent)))
+                            {
+                                g.FillRectangle(fill, 5, 7, 22, 18);
+                            }
+                            using (Pen thin = new Pen(accent, 1.8f))
+                            {
+                                g.DrawRectangle(thin, 5, 7, 22, 18);
+                                g.DrawLine(thin, 9, 12, 23, 12);
+                                g.DrawLine(thin, 9, 16, 23, 16);
+                                g.DrawLine(thin, 9, 20, 18, 20);
+                            }
                             break;
 
                         case "maps":
@@ -667,6 +828,31 @@ namespace Reloaded
                             g.DrawArc(pen, 14, 5, 11, 22, 60, 250);
                             break;
 
+                        case "aero":
+                        case "aero_dark":
+                            using (Pen leaf = new Pen(kind == "aero"
+                                ? Color.FromArgb(46, 125, 50)
+                                : Color.FromArgb(102, 187, 106), 2.2f))
+                            {
+                                leaf.StartCap = LineCap.Round;
+                                leaf.EndCap = LineCap.Round;
+                                g.DrawArc(leaf, 8, 6, 16, 20, 195, 150);
+                                g.DrawArc(leaf, 9, 12, 14, 14, 20, 140);
+                                g.DrawLine(leaf, 16, 8, 16, 24);
+                            }
+                            break;
+
+                        case "theme_settings":
+                            // Three horizontal sliders (a "settings" glyph).
+                            for (int i = 0; i < 3; i++)
+                            {
+                                float y = 10 + i * 6;
+                                g.DrawLine(pen, 6, y, 26, y);
+                                using (SolidBrush dot = new SolidBrush(accent))
+                                    g.FillEllipse(dot, 14 + i * 2, y - 2, 4, 4);
+                            }
+                            break;
+
                         case "minimize":
                             g.DrawLines(pen, new PointF[]
                             {
@@ -715,6 +901,8 @@ namespace Reloaded
             // group width were exactly what got clipped before.
             SetGroupText(_fileGroup, I18n.T("group_file"));
             SetGroupText(_imageGroup, I18n.T("group_image"));
+            SetGroupText(_chipsGroup, I18n.T("group_chips"));
+            SetGroupText(_labelsGroup, I18n.T("group_labels"));
             SetGroupText(_viewsGroup, I18n.T("group_views"));
             SetGroupText(_mapGroup, I18n.T("group_map"));
             SetGroupText(_themeGroup, I18n.T("view_theme"));
@@ -728,6 +916,12 @@ namespace Reloaded
             _reloadButton.TextLine2 = I18n.T("file_reload_sub");
             _closeButton.TextLine1 = I18n.T("file_close");
             _closeButton.TextLine2 = I18n.T("file_close_sub");
+            _mergeSplitButton.TextLine1 = I18n.T("merge_split");
+            _mergeSplitButton.TextLine2 = I18n.T("merge_split_sub");
+            _loadLabelsButton.TextLine1 = I18n.T("file_labels");
+            _loadLabelsButton.TextLine2 = I18n.T("file_labels_sub");
+            _loadLabelsButton.ToolTipTitle = I18n.T("file_labels");
+            _loadLabelsButton.ToolTipBody = I18n.T("labels_tooltip");
 
             _mapsButton.TextLine1 = I18n.T("maps");
             _mapsButton.TextLine2 = I18n.T("maps_sub");
@@ -740,10 +934,8 @@ namespace Reloaded
             _closeMapButton.TextLine1 = I18n.T("map_close");
             _closeMapButton.TextLine2 = I18n.T("map_close_sub");
 
-            _lightButton.TextLine1 = I18n.T("theme_light");
-            _lightButton.TextLine2 = I18n.T("theme_sub");
-            _darkButton.TextLine1 = I18n.T("theme_dark");
-            _darkButton.TextLine2 = I18n.T("theme_sub");
+            _themeSettingsButton.TextLine1 = I18n.T("theme_settings_title");
+            _themeSettingsButton.TextLine2 = I18n.T("theme_sub");
 
             _minimizeButton.TextLine1 = I18n.T("ribbon_minimize");
             _minimizeButton.TextLine2 = I18n.T("ribbon_sub");
@@ -767,6 +959,21 @@ namespace Reloaded
             _englishButton.Checked = english;
             _germanButton.Checked = german;
 
+            // Target block group: the group caption and the block names are
+            // literal (blocks are proper names), the "all blocks" option is
+            // not.  They are not in the I18n tables, which this change must
+            // not touch.
+            SetGroupText(_targetGroup, english ? "Target block" : "Zielblock");
+            _allBlocksButton.TextLine1 = english ? "All blocks" : "Alle Blöcke";
+            _allBlocksButton.TextLine2 = "1 + 2 + 3";
+            _block1Button.TextLine1 = "Block 1";
+            _block1Button.TextLine2 = "0x38000";
+            _block2Button.TextLine1 = "Block 2";
+            _block2Button.TextLine2 = "0x00000";
+            _block3Button.TextLine1 = "Block 3";
+            _block3Button.TextLine2 = "0x08000";
+            SyncTargetBlockButtons();
+
             if (_grid != null)
             {
                 _grid.Columns["block"].HeaderText = I18n.T("block");
@@ -782,6 +989,50 @@ namespace Reloaded
         {
             group.TextLine1 = text;
             group.TextLine2 = string.Empty;
+        }
+
+        /// <summary>
+        /// Applies a target block choice.  "All three blocks" asks first
+        /// because replicating a map value into block 1, 2 and 3 overwrites
+        /// three copies of the same table at once.
+        /// </summary>
+        private void SelectTargetBlock(int mask, bool confirmAllBlocks)
+        {
+            if (confirmAllBlocks && mask == Edc15V256Layout.MaskAll)
+            {
+                string question = I18n.CurrentLanguage != null &&
+                    string.Equals(I18n.CurrentLanguage, "en", StringComparison.OrdinalIgnoreCase)
+                    ? "Write map changes into all three data blocks?\r\n\r\n" +
+                      "Every save then overwrites the same table in block 1 (0x38000), " +
+                      "block 2 (0x00000) and block 3 (0x08000)."
+                    : "Kartenänderungen in alle drei Datenblöcke schreiben?\r\n\r\n" +
+                      "Jedes Speichern überschreibt dann dieselbe Tabelle in Block 1 " +
+                      "(0x38000), Block 2 (0x00000) und Block 3 (0x08000).";
+                DialogResult answer = MessageBox.Show(this, question,
+                    I18n.CurrentLanguage != null &&
+                    string.Equals(I18n.CurrentLanguage, "en", StringComparison.OrdinalIgnoreCase)
+                        ? "Target block" : "Zielblock",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2);
+                if (answer != DialogResult.Yes)
+                {
+                    SyncTargetBlockButtons();
+                    return;
+                }
+            }
+
+            TargetBlockStore.Mask = mask;
+            SyncTargetBlockButtons();
+        }
+
+        /// <summary>Makes the ribbon buttons mirror <see cref="TargetBlockStore.Mask"/>.</summary>
+        private void SyncTargetBlockButtons()
+        {
+            int mask = TargetBlockStore.Mask;
+            _allBlocksButton.Checked = mask == Edc15V256Layout.MaskAll;
+            _block1Button.Checked = mask == 1;
+            _block2Button.Checked = mask == 2;
+            _block3Button.Checked = mask == 4;
         }
 
         /// <summary>
@@ -848,32 +1099,14 @@ namespace Reloaded
         /// </summary>
         private void ApplyChromePalette(KryptonPalette palette)
         {
-            Color formBack = palette.GetBackColor1(PaletteBackStyle.FormMain, PaletteState.Normal);
-            if (formBack.A != 255) formBack = SystemColors.Control;
-
-            bool dark = formBack.GetBrightness() < 0.5f;
-            _chromeSurface = dark ? formBack : Color.White;
-            _chromeHeader = dark
-                ? Blend(formBack, Color.White, 0.09f)
-                : Blend(Color.White, Color.Black, 0.06f);
-            _chromeLine = dark
-                ? Blend(formBack, Color.White, 0.18f)
-                : Blend(Color.White, Color.Black, 0.16f);
-
-            Color text;
-            try
-            {
-                text = palette.GetContentShortTextColor1(
-                    PaletteContentStyle.LabelNormalPanel, PaletteState.Normal);
-            }
-            catch
-            {
-                text = dark ? Color.FromArgb(230, 230, 230) : Color.FromArgb(34, 34, 34);
-            }
-            if (text.A != 255)
-                text = dark ? Color.FromArgb(230, 230, 230) : Color.FromArgb(34, 34, 34);
-            _chromeText = text;
-            _chromeMuted = Blend(text, _chromeSurface, 0.42f);
+            // Chrome colours come from the active data palette, not from
+            // per-control branching, so all four themes are handled by data.
+            UiPalette c = ThemeStore.Active;
+            _chromeSurface = c.Card;
+            _chromeHeader = c.Elevated;
+            _chromeLine = c.Line;
+            _chromeText = c.Text;
+            _chromeMuted = c.Muted;
 
             // Split container and its panels.
             _split.BackColor = _chromeLine;
@@ -890,6 +1123,7 @@ namespace Reloaded
 
             // Viewer surface and the empty-state text.
             _viewerBody.BackColor = _chromeSurface;
+            _viewerBody.BorderColor = _chromeLine;
             _placeholder.BackColor = _chromeSurface;
             _placeholderTitle.BackColor = _chromeSurface;
             _placeholderTitle.ForeColor = _chromeText;
@@ -970,8 +1204,8 @@ namespace Reloaded
                 // colour as the other buttons.
                 bool darkChrome = text.GetBrightness() > 0.5f;
                 Color checkedBack = darkChrome
-                    ? Color.FromArgb(38, 79, 120)
-                    : Color.FromArgb(205, 226, 244);
+                    ? Color.FromArgb(46, 74, 115)
+                    : Color.FromArgb(234, 241, 254);
                 Color hoverBack = darkChrome
                     ? Blend(_chromeSurface, Color.White, 0.10f)
                     : Blend(_chromeSurface, Color.Black, 0.05f);
@@ -1115,17 +1349,29 @@ namespace Reloaded
         /// Does not persist; persistence is the caller's job (the click
         /// handlers persist, the startup path does not).
         /// </summary>
+        /// <summary>
+        /// Applies one resolved theme's palette.  The active data palette
+        /// (<see cref="ThemeStore.Active"/>) is read by ApplyChromePalette, so
+        /// the plain-WinForms map viewer and dialogs follow immediately.
+        /// </summary>
         public void ApplyTheme(ThemeKind kind)
         {
-            ApplyPalette(kind == ThemeKind.Dark ? _darkPalette : _lightPalette);
-            _lightButton.Checked = kind == ThemeKind.Light;
-            _darkButton.Checked = kind == ThemeKind.Dark;
+            ApplyPalette(ThemePalettes.Create(kind));
         }
 
-        private void SetTheme(ThemeKind kind)
+        /// <summary>Re-applies the palette after a <see cref="ThemeStore"/> change.</summary>
+        private void ThemeStoreChanged(object sender, EventArgs e)
         {
-            ApplyTheme(kind);
-            ThemeStore.Save(kind);
+            ApplyPalette(ThemePalettes.Create(ThemeStore.ResolveKind()));
+        }
+
+        /// <summary>Opens the theme settings dialog (family + mode).</summary>
+        private void OpenThemeSettings()
+        {
+            using (ThemeSettingsForm form = new ThemeSettingsForm(_activePalette))
+            {
+                form.ShowDialog(this);
+            }
         }
 
         /// <summary>Status-bar label with a consistent font and padding.</summary>
@@ -1357,6 +1603,18 @@ namespace Reloaded
         // file handling
         // ------------------------------------------------------------------
 
+        /// <summary>
+        /// Opens the chip merge/split dialog.  The active palette is passed so
+        /// the dialog follows the light/dark theme of the main window.
+        /// </summary>
+        private void ShowMergeSplit()
+        {
+            using (MergeSplitForm form = new MergeSplitForm(_activePalette))
+            {
+                form.ShowDialog(this);
+            }
+        }
+
         private void ShowAbout()
         {
             MessageBox.Show(
@@ -1365,6 +1623,101 @@ namespace Reloaded
                 I18n.T("about_title"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
+        }
+
+        /// <summary>
+        /// Loads an external <c>*.labels</c> file and applies it to the loaded
+        /// image through the parser's own label overlay.  The file is validated
+        /// first (software id and image size); a rejected file leaves the map
+        /// tree unchanged.  DAMOS imports are converted with
+        /// <c>tools/damos_import.py</c>.
+        /// </summary>
+        private void LoadLabelsFile()
+        {
+            if (_lastPath == null)
+            {
+                MessageBox.Show(this, I18n.T("labels_no_image"), I18n.T("labels_title"),
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using (OpenFileDialog dlg = new OpenFileDialog())
+            {
+                dlg.Title = I18n.T("labels_title");
+                dlg.Filter = I18n.T("labels_filter");
+                dlg.CheckFileExists = true;
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                ApplyLabelFile(dlg.FileName);
+            }
+        }
+
+        /// <summary>Validates one label file and rebuilds the tree with it.</summary>
+        private void ApplyLabelFile(string labelPath)
+        {
+            string part;
+            int size;
+            try
+            {
+                byte[] image = File.ReadAllBytes(_lastPath);
+                EDC15VFileParser parser = new EDC15VFileParser();
+                part = parser.ExtractPartnumber(image) ?? string.Empty;
+                size = image.Length;
+            }
+            catch (Exception ex)
+            {
+                ShowLabelError(ex.Message);
+                return;
+            }
+
+            string error;
+            List<MapLabel> labels = MapList.LoadLabelFile(labelPath, part, size, out error);
+            if (labels == null)
+            {
+                ShowLabelError(error);
+                return;
+            }
+
+            // Project first: a parse/apply failure must leave the visible tree
+            // and the previously loaded labels alone.
+            MapLabelApplyResult result;
+            List<MapList.Map> maps;
+            try
+            {
+                maps = MapList.GetMaps(_lastPath, labels, out result);
+            }
+            catch (Exception ex)
+            {
+                ShowLabelError(ex.Message);
+                return;
+            }
+
+            _externalLabels = labels;
+            _labelsPath = labelPath;
+            int mapCount = FillMapTree(maps);
+            ReportLabels(labelPath, labels.Count, result, mapCount);
+        }
+
+        private void ShowLabelError(string reason)
+        {
+            MessageBox.Show(this, I18n.T("labels_error", reason ?? string.Empty),
+                            I18n.T("labels_title"),
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
+        /// <summary>Writes the apply counters to the Blocks report area.</summary>
+        private void ReportLabels(string labelPath, int rows, MapLabelApplyResult result,
+                                  int mapCount)
+        {
+            if (result == null) result = new MapLabelApplyResult();
+            string name = labelPath == null ? "?" : Path.GetFileName(labelPath);
+            _report.AppendText(I18n.T("labels_report", name, rows, result.Maps3D,
+                result.Curves1D, result.ScalarsRenamed, result.ScalarsAdded,
+                result.Skipped, result.AlreadyNamed, result.Rejected, mapCount) + "\r\n");
+            Console.WriteLine("[labels] external " + name + ": " + result.Maps3D + " 3D, " +
+                              result.Curves1D + " 1D, " + result.ScalarsRenamed + " scalar renames, " +
+                              result.ScalarsAdded + " scalars added, " + result.Skipped + " skipped, " +
+                              result.AlreadyNamed + " already named, " + result.Rejected + " rejected, " +
+                              rows + " rows, " + mapCount + " maps in tree");
         }
 
         private void OpenFile()
@@ -1415,10 +1768,21 @@ namespace Reloaded
             _reloadButton.Enabled = false;
             _openMapButton.Enabled = false;
             _closeMapButton.Enabled = false;
+            _loadLabelsButton.Enabled = false;
+            _externalLabels = null;
+            _labelsPath = null;
         }
 
         private void Inspect(string path)
         {
+            // An external label file belongs to the image it was loaded for:
+            // opening another image drops it, Reload (same path) keeps it.
+            if (!string.Equals(_lastPath, path, StringComparison.OrdinalIgnoreCase))
+            {
+                _externalLabels = null;
+                _labelsPath = null;
+            }
+
             // Remember the path so a language switch can re-render the
             // dynamic texts of the loaded file.
             _lastPath = path;
@@ -1436,6 +1800,7 @@ namespace Reloaded
             _treeHeaderLabel.Text = I18n.T("tree_header_empty");
             _reloadButton.Enabled = true;
             _openMapButton.Enabled = true;
+            _loadLabelsButton.Enabled = true;
 
             byte[] image;
             try
@@ -1576,7 +1941,10 @@ namespace Reloaded
             _report.ScrollToCaret();
 
             // Map list (Kennfelder), shown as a Category > Subcategory tree.
-            int mapCount = FillMapTree(path);
+            MapLabelApplyResult labelResult;
+            int mapCount = FillMapTree(path, out labelResult);
+            if (_externalLabels != null && mapCount > 0)
+                ReportLabels(_labelsPath, _externalLabels.Count, labelResult, mapCount);
 
             string checksum = okFields >= EDC15VM256Checksum.BlockCount
                 ? I18n.T("status_checksum_ok")
@@ -1626,6 +1994,35 @@ namespace Reloaded
         /// </summary>
         private int FillMapTree(string path)
         {
+            MapLabelApplyResult ignored;
+            return FillMapTree(path, out ignored);
+        }
+
+        /// <summary>
+        /// Parses <paramref name="path"/> (embedded labels plus the external
+        /// <see cref="_externalLabels"/>, when one is loaded) and fills the tree.
+        /// </summary>
+        private int FillMapTree(string path, out MapLabelApplyResult labelResult)
+        {
+            labelResult = new MapLabelApplyResult();
+            List<MapList.Map> maps;
+            try
+            {
+                maps = MapList.GetMaps(path, _externalLabels, out labelResult);
+            }
+            catch (Exception ex)
+            {
+                // Same fallback as the old single-call version: a parse or
+                // label failure must not escape into the UI thread.
+                _report.AppendText("\r\nMaps: " + ex.Message + "\r\n");
+                return 0;
+            }
+            return FillMapTree(maps);
+        }
+
+        /// <summary>Fills the tree from an already projected map list.</summary>
+        private int FillMapTree(List<MapList.Map> maps)
+        {
             if (_mapTree == null) return 0;
 
             int count = 0;
@@ -1634,7 +2031,6 @@ namespace Reloaded
             {
                 _mapTree.Nodes.Clear();
 
-                List<MapList.Map> maps = MapList.GetMaps(path);
                 Dictionary<string, Dictionary<string, List<MapList.Map>>> groups =
                     new Dictionary<string, Dictionary<string, List<MapList.Map>>>();
 
@@ -1811,14 +2207,106 @@ namespace Reloaded
 
             // Optional theme override for scripting/screenshots, e.g. --theme=dark.
             string file = null;
-            ThemeKind? forced = null;
+            ThemeFamilie? forcedFamily = null;
+            ThemeModus? forcedMode = null;
+
+            // Headless write-path self-test (see WRITEPATH.md):
+            //   --apply-test --map=<name> --cell=<col>,<row>,<value>
+            //   --target=<mask> --out=<copy> --report=<file>
+            bool applyTest = false;
+            bool listMaps = false;
+            bool viewReport = false;
+            bool viewer = false;
+            bool mergesplit = false;
+            bool settings = false;
+            string labelsPath = null;
+            string mapName = null;
+            string cellSpec = null;
+            string reportPath = null;
+            string outPath = null;
+            int targetMask = -1;
+            MapViewMode? forcedViewMode = null;
+            string autoOpen = null;
+
             foreach (string arg in args)
             {
                 if (arg.StartsWith("--theme=", StringComparison.OrdinalIgnoreCase))
                 {
                     string value = arg.Substring("--theme=".Length);
-                    if (value.Equals("dark", StringComparison.OrdinalIgnoreCase)) forced = ThemeKind.Dark;
-                    else if (value.Equals("light", StringComparison.OrdinalIgnoreCase)) forced = ThemeKind.Light;
+                    if (value.Equals("dark", StringComparison.OrdinalIgnoreCase) ||
+                        value.Equals("moderndark", StringComparison.OrdinalIgnoreCase))
+                    { forcedFamily = ThemeFamilie.Modern; forcedMode = ThemeModus.Dark; }
+                    else if (value.Equals("light", StringComparison.OrdinalIgnoreCase) ||
+                             value.Equals("modernlight", StringComparison.OrdinalIgnoreCase))
+                    { forcedFamily = ThemeFamilie.Modern; forcedMode = ThemeModus.Light; }
+                    else if (value.Equals("aero", StringComparison.OrdinalIgnoreCase) ||
+                             value.Equals("aerogreen", StringComparison.OrdinalIgnoreCase))
+                    { forcedFamily = ThemeFamilie.AeroGreen; forcedMode = ThemeModus.Light; }
+                    else if (value.Equals("aerodark", StringComparison.OrdinalIgnoreCase) ||
+                             value.Equals("aerogreendark", StringComparison.OrdinalIgnoreCase))
+                    { forcedFamily = ThemeFamilie.AeroGreen; forcedMode = ThemeModus.Dark; }
+                }
+                else if (arg.Equals("--apply-test", StringComparison.OrdinalIgnoreCase))
+                {
+                    applyTest = true;
+                }
+                else if (arg.Equals("--list-maps", StringComparison.OrdinalIgnoreCase))
+                {
+                    listMaps = true;
+                }
+                else if (arg.StartsWith("--labels=", StringComparison.OrdinalIgnoreCase))
+                {
+                    labelsPath = arg.Substring("--labels=".Length);
+                }
+                else if (arg.StartsWith("--map=", StringComparison.OrdinalIgnoreCase))
+                {
+                    mapName = arg.Substring("--map=".Length);
+                }
+                else if (arg.StartsWith("--cell=", StringComparison.OrdinalIgnoreCase))
+                {
+                    cellSpec = arg.Substring("--cell=".Length);
+                }
+                else if (arg.StartsWith("--target=", StringComparison.OrdinalIgnoreCase))
+                {
+                    int.TryParse(arg.Substring("--target=".Length), out targetMask);
+                }
+                else if (arg.StartsWith("--out=", StringComparison.OrdinalIgnoreCase))
+                {
+                    outPath = arg.Substring("--out=".Length);
+                }
+                else if (arg.StartsWith("--report=", StringComparison.OrdinalIgnoreCase))
+                {
+                    reportPath = arg.Substring("--report=".Length);
+                }
+                else if (arg.Equals("--view-report", StringComparison.OrdinalIgnoreCase))
+                {
+                    viewReport = true;
+                }
+                else if (arg.Equals("--viewer", StringComparison.OrdinalIgnoreCase))
+                {
+                    viewer = true;
+                }
+                else if (arg.Equals("--mergesplit", StringComparison.OrdinalIgnoreCase))
+                {
+                    mergesplit = true;
+                }
+                else if (arg.Equals("--settings", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings = true;
+                }
+                else if (arg.StartsWith("--view-mode=", StringComparison.OrdinalIgnoreCase))
+                {
+                    string value = arg.Substring("--view-mode=".Length);
+                    if (value.Equals("table", StringComparison.OrdinalIgnoreCase))
+                        forcedViewMode = MapViewMode.TableOnly;
+                    else if (value.Equals("chart", StringComparison.OrdinalIgnoreCase))
+                        forcedViewMode = MapViewMode.ChartOnly;
+                    else if (value.Equals("both", StringComparison.OrdinalIgnoreCase))
+                        forcedViewMode = MapViewMode.Both;
+                }
+                else if (arg.StartsWith("--open=", StringComparison.OrdinalIgnoreCase))
+                {
+                    autoOpen = arg.Substring("--open=".Length);
                 }
                 else if (!arg.StartsWith("--", StringComparison.OrdinalIgnoreCase))
                 {
@@ -1826,8 +2314,295 @@ namespace Reloaded
                 }
             }
 
-            MainForm form = new MainForm(forced ?? ThemeStore.Load(), file);
+            if (listMaps)
+            {
+                Environment.ExitCode = ListMaps(file, labelsPath, reportPath);
+                return;
+            }
+
+            if (applyTest)
+            {
+                Environment.ExitCode = RunApplyTest(file, outPath, mapName, cellSpec, targetMask, reportPath);
+                return;
+            }
+
+            if (viewReport)
+            {
+                Environment.ExitCode = RunViewReport(file, reportPath);
+                return;
+            }
+
+            if (forcedFamily.HasValue && forcedMode.HasValue)
+                ThemeStore.Apply(forcedFamily.Value, forcedMode.Value);
+
+            if (viewer)
+            {
+                if (forcedViewMode.HasValue) ViewModeStore.ForceForSession(forcedViewMode.Value);
+                if (string.IsNullOrEmpty(mapName)) mapName = "Driver's Wish";
+                MapViewForm viewForm = MapViewForm.FromBinary(file, mapName);
+                viewForm.BackColor = ThemePalettes.FormBackground(ThemeStore.ResolveKind());
+                viewForm.ReapplyTheme();
+                Application.Run(viewForm);
+                return;
+            }
+
+            if (mergesplit)
+            {
+                Application.Run(new MergeSplitForm(ThemePalettes.Create(ThemeStore.ResolveKind())));
+                return;
+            }
+
+            if (settings)
+            {
+                KryptonPalette pal = ThemePalettes.Create(ThemeStore.ResolveKind());
+                KryptonManager mgr = new KryptonManager();
+                mgr.GlobalPaletteMode = PaletteModeManager.Custom;
+                mgr.GlobalPalette = pal;
+                Application.Run(new ThemeSettingsForm(pal));
+                return;
+            }
+
+            if (forcedViewMode.HasValue) ViewModeStore.ForceForSession(forcedViewMode.Value);
+            if (!string.IsNullOrEmpty(autoOpen)) MainForm.AutoOpenMap = autoOpen;
+
+            MainForm form = new MainForm(ThemeStore.ResolveKind(), file);
             Application.Run(form);
+        }
+
+        /// <summary>Diagnostic: dumps the parser's map list into the report file.</summary>
+        private static int ListMaps(string file, string labelsPath, string reportPath)
+        {
+            StringBuilder report = new StringBuilder();
+            int exit = 1;
+            try
+            {
+                List<MapList.Map> maps;
+                if (string.IsNullOrEmpty(labelsPath))
+                {
+                    maps = MapList.GetMaps(file);
+                }
+                else
+                {
+                    // Same external-label path as File > Labels > Load labels,
+                    // without the UI (used by the headless verification).
+                    byte[] image = File.ReadAllBytes(file);
+                    string part = new EDC15VFileParser().ExtractPartnumber(image) ?? string.Empty;
+                    string labelError;
+                    List<MapLabel> labels = MapList.LoadLabelFile(labelsPath, part, image.Length,
+                                                                 out labelError);
+                    if (labels == null)
+                    {
+                        report.AppendLine("LABELS_ERROR=" + labelError);
+                        throw new InvalidOperationException("labels rejected: " + labelError);
+                    }
+
+                    MapLabelApplyResult labelResult;
+                    maps = MapList.GetMaps(file, labels, out labelResult);
+                    report.AppendLine("LABELS_FILE=" + Path.GetFileName(labelsPath));
+                    report.AppendLine("LABELS_ROWS=" + labels.Count);
+                    report.AppendLine("LABELS_3D=" + labelResult.Maps3D);
+                    report.AppendLine("LABELS_1D=" + labelResult.Curves1D);
+                    report.AppendLine("LABELS_SCALARS_RENAMED=" + labelResult.ScalarsRenamed);
+                    report.AppendLine("LABELS_SCALARS_ADDED=" + labelResult.ScalarsAdded);
+                    report.AppendLine("LABELS_SKIPPED=" + labelResult.Skipped);
+                    report.AppendLine("LABELS_ALREADY_NAMED=" + labelResult.AlreadyNamed);
+                    report.AppendLine("LABELS_REJECTED=" + labelResult.Rejected);
+                }
+                report.AppendLine("MAP_COUNT=" + maps.Count);
+                foreach (MapList.Map map in maps)
+                {
+                    report.AppendLine(string.Format(
+                        "MAP|{0}|{1}|0x{2:X5}|{3}|{4}x{5}|block {6}",
+                        map.Varname, map.Description, map.Address, map.Length,
+                        map.XLen, map.YLen, map.CodeBlock));
+                }
+                exit = 0;
+            }
+            catch (Exception ex)
+            {
+                report.AppendLine("EXCEPTION=" + ex);
+            }
+            string text = report.ToString();
+            try { Console.WriteLine(text); } catch { }
+            if (!string.IsNullOrEmpty(reportPath))
+            {
+                try { File.WriteAllText(reportPath, text); } catch { }
+            }
+            return exit;
+        }
+
+        /// <summary>
+        /// Headless exercise of the real write path: copies the input file,
+        /// opens one map with <see cref="MapViewForm.FromBinary"/>, commits one
+        /// cell, applies with the requested target mask and writes a small
+        /// machine-readable report.  No modal dialog, no automatic save of the
+        /// original.
+        /// </summary>
+        private static int RunApplyTest(string file, string outPath, string mapName,
+                                        string cellSpec, int targetMask, string reportPath)
+        {
+            StringBuilder report = new StringBuilder();
+            int exitCode = 1;
+            try
+            {
+                if (string.IsNullOrEmpty(file) || !File.Exists(file))
+                {
+                    throw new ArgumentException("--apply-test needs an existing input file");
+                }
+                string copy = string.IsNullOrEmpty(outPath) ? file + ".applytest.bin" : outPath;
+                File.Copy(file, copy, true);
+
+                if (string.IsNullOrEmpty(mapName)) mapName = "Driver's Wish";
+                int column = 0, row = 0, value = 0;
+                if (!string.IsNullOrEmpty(cellSpec))
+                {
+                    string[] parts = cellSpec.Split(',');
+                    if (parts.Length != 3)
+                    {
+                        throw new ArgumentException("--cell must be col,row,value");
+                    }
+                    column = int.Parse(parts[0], CultureInfo.InvariantCulture);
+                    row = int.Parse(parts[1], CultureInfo.InvariantCulture);
+                    value = int.Parse(parts[2], CultureInfo.InvariantCulture);
+                }
+                if (targetMask < 0) targetMask = TargetBlockStore.Mask;
+
+                using (MapViewForm form = MapViewForm.FromBinary(copy, mapName))
+                {
+                    MapCellGrid grid = form.CellGrid;
+                    string error;
+                    if (!grid.SetCellValue(column, row, value, out error))
+                    {
+                        throw new InvalidOperationException("cell rejected: " + error);
+                    }
+
+                    MapSaveResult result = grid.ApplyToTempCopy(targetMask);
+
+                    report.AppendLine("OK=" + (result.Ok ? "1" : "0"));
+                    report.AppendLine("UNCHANGED=" + (result.Unchanged ? "1" : "0"));
+                    report.AppendLine("LAYOUT=" + (result.LayoutApplies ? "1" : "0"));
+                    report.AppendLine("MAP=" + mapName);
+                    report.AppendLine("MAP_ADDRESS=0x" + grid.MapAddress.ToString("X5"));
+                    report.AppendLine("MAP_LENGTH=" + grid.MapLength);
+                    report.AppendLine("SOURCE_BLOCK=" + result.SourceBlock);
+                    report.AppendLine("TARGET_MASK=" + targetMask);
+                    report.AppendLine("TARGETS=" + Join(result.Targets));
+                    report.AppendLine("CHANGED_BLOCKS=" + Join(result.ChangedBlocks));
+                    report.AppendLine("SEALED_BLOCKS=" + Join(result.SealedBlocks));
+                    report.AppendLine("BLOCKS_WITHOUT_SYMBOL=" + Join(result.BlocksWithoutSymbol));
+                    report.AppendLine("CHECKSUMS_BEFORE=" + result.ChecksumsOkBefore);
+                    report.AppendLine("CHECKSUMS_AFTER=" + result.ChecksumsOkAfter);
+                    report.AppendLine("CHANGED_CELLS=" + result.ChangedCells);
+                    report.AppendLine("CELL=" + column + "," + row + "," + value);
+                    report.AppendLine("TEMP=" + result.TempPath);
+                    report.AppendLine("COPY=" + copy);
+                    for (int i = 0; i < result.Targets.Length; i++)
+                    {
+                        int address = Edc15V256Layout.AddressInBlock(
+                            result.Targets[i], grid.MapAddress);
+                        report.AppendLine("TARGET_ADDRESS_" + result.Targets[i] + "=0x" +
+                                          address.ToString("X5"));
+                    }
+                    report.AppendLine("MESSAGE_BEGIN");
+                    report.AppendLine(result.Message);
+                    report.AppendLine("MESSAGE_END");
+                    exitCode = result.Ok ? 0 : 1;
+                }
+            }
+            catch (Exception ex)
+            {
+                report.AppendLine("OK=0");
+                report.AppendLine("EXCEPTION=" + ex);
+            }
+
+            string text = report.ToString();
+            try { Console.WriteLine(text); }
+            catch { }
+            if (!string.IsNullOrEmpty(reportPath))
+            {
+                try { File.WriteAllText(reportPath, text); }
+                catch { }
+            }
+            return exitCode;
+        }
+
+        /// <summary>
+        /// Headless timing of the coloured table: opens the largest 2D map,
+        /// reports its dimensions, the colouring time and the layout-switch
+        /// time.  No window is shown; the numbers prove the table does not
+        /// stutter on the biggest map present.
+        /// </summary>
+        private static int RunViewReport(string file, string reportPath)
+        {
+            StringBuilder report = new StringBuilder();
+            int exitCode = 1;
+            try
+            {
+                if (string.IsNullOrEmpty(file) || !File.Exists(file))
+                {
+                    throw new ArgumentException("--view-report needs an existing input file");
+                }
+
+                List<MapList.Map> maps = MapList.GetMaps(file);
+                MapList.Map largest = null;
+                foreach (MapList.Map m in maps)
+                {
+                    if (m.XLen <= 1 || m.YLen <= 1) continue;
+                    if (largest == null ||
+                        (long)m.XLen * m.YLen > (long)largest.XLen * largest.YLen)
+                    {
+                        largest = m;
+                    }
+                }
+                if (largest == null && maps.Count > 0) largest = maps[0];
+                if (largest == null) throw new InvalidOperationException("no maps in file");
+
+                System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+                MapViewForm form = MapViewForm.FromBinary(file, largest.Varname);
+                sw.Stop();
+
+                report.AppendLine("MAP=" + largest.Varname);
+                report.AppendLine("DIMS=" + largest.XLen + "x" + largest.YLen);
+                report.AppendLine("CELLS=" + ((long)largest.XLen * largest.YLen));
+                report.AppendLine("CONSTRUCT_MS=" + sw.ElapsedMilliseconds);
+                report.AppendLine("COLORIZE_MS=" + form.CellGrid.LastColorizeMs);
+
+                sw.Restart();
+                form.SetViewModeForTest(MapViewMode.TableOnly);
+                form.SetViewModeForTest(MapViewMode.Both);
+                form.SetViewModeForTest(MapViewMode.ChartOnly);
+                form.SetViewModeForTest(MapViewMode.Both);
+                sw.Stop();
+                report.AppendLine("SWITCH4_MS=" + sw.ElapsedMilliseconds);
+                report.AppendLine("LAYOUT_MS=" + form.LastLayoutMs);
+
+                form.Dispose();
+                exitCode = 0;
+            }
+            catch (Exception ex)
+            {
+                report.AppendLine("EXCEPTION=" + ex);
+            }
+
+            string text = report.ToString();
+            try { Console.WriteLine(text); } catch { }
+            if (!string.IsNullOrEmpty(reportPath))
+            {
+                try { File.WriteAllText(reportPath, text); } catch { }
+            }
+            return exitCode;
+        }
+
+        private static string Join(int[] values)
+        {
+            if (values == null || values.Length == 0) return string.Empty;
+            StringBuilder sb = new StringBuilder();
+            foreach (int v in values)
+            {
+                if (sb.Length > 0) sb.Append(',');
+                sb.Append(v);
+            }
+            return sb.ToString();
         }
     }
 }
