@@ -11,7 +11,9 @@ also keeps this file in step. A release is a commit plus an annotated git tag
 ## [Unreleased]
 
 DevExpress-free **Reloaded UI** (new `Reloaded/` project, branch `reloaded-ui`):
-a clean-room rewrite of the main window targeting .NET Framework 4.0 so it runs
+a rewrite of the main window — porting the forked DevExpress UI to a
+Krypton/OxyPlot WinForms stack and reusing the forked parser/checksum/label
+logic — targeting .NET Framework 4.0 so it runs
 on Windows XP SP3 through Windows 11 and under Wine. The old DevExpress app
 stays on `master` until feature parity.
 

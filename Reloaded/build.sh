@@ -59,6 +59,8 @@ CORE_SOURCES=(
     ../MSA15_checksum.cs
     ../Edc15V256Layout.cs
     ../EDC15VM256Checksum.cs
+    # UI-free byte merge/split of the two 128 KB chip halves (MergeSplitForm).
+    ../ChipMergeSplit.cs
 )
 
 wine "$CSC" /nologo /target:winexe /out:Reloaded.exe \
@@ -76,10 +78,12 @@ wine "$CSC" /nologo /target:winexe /out:Reloaded.exe \
     "${CORE_SOURCES[@]}" \
     MapList.cs \
     Main.cs \
+    MergeSplitForm.cs \
     Theming.cs \
     HexViewerControl.cs \
     I18n.cs \
-    MapViewForm.cs
+    MapViewForm.cs \
+    Gdi3dSurface.cs
 
 # Copy the private assemblies next to the .exe (the .NET Framework CLR, and
 # Mono's loader, probe the application base directory — the CopyLocal step an

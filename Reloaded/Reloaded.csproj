@@ -58,16 +58,22 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Main.cs" />
+    <Compile Include="MergeSplitForm.cs" />
     <Compile Include="Theming.cs" />
     <Compile Include="HexViewerControl.cs" />
     <Compile Include="MapList.cs" />
     <Compile Include="I18n.cs" />
     <Compile Include="MapViewForm.cs" />
+    <Compile Include="Gdi3dSurface.cs" />
     <Compile Include="..\Edc15V256Layout.cs">
       <Link>Edc15V256Layout.cs</Link>
     </Compile>
     <Compile Include="..\EDC15VM256Checksum.cs">
       <Link>EDC15VM256Checksum.cs</Link>
+    </Compile>
+    <!-- UI-free chip merge/split used by MergeSplitForm. -->
+    <Compile Include="..\ChipMergeSplit.cs">
+      <Link>ChipMergeSplit.cs</Link>
     </Compile>
     <!-- Map-list parser closure (EDC15VFileParser + everything the compiler
          demands for it).  All UI-free; see MAPLIST.md. -->

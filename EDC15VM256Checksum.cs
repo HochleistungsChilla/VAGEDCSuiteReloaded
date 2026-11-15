@@ -2,11 +2,10 @@
 //
 // EDC15VM256Checksum.cs
 //
-// Cleanroom implementation of the block checksum used by the 256 KB
+// Implementation of the block checksum used by the 256 KB
 // EDC15V-5 images (e.g. VAG 038 906 018 P, SG 1623).
 //
-// This code was written from the documented behaviour of the format, not by
-// copying or transliterating disassembled code.  The only inputs were:
+// Derived from the documented behaviour of the format.  The inputs were:
 //   * the three checksum field offsets and the three data ranges,
 //   * the two init values, the two final constants,
 //   * the described 16-bit operations and their order,
